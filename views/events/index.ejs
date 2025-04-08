@@ -1,0 +1,62 @@
+<%- include('../partials/header.ejs') %>
+
+    <div class="min-h-screen bg-[#0F172A] text-white px-6 py-8">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6">All Events</h2>
+
+            <% if (events.length===0) { %>
+                <p class="text-gray-400 text-center py-8">No events found.</p>
+                <% } else { %>
+                    <div class="grid gap-6">
+                        <% events.forEach(event=> { %>
+                            <div class="bg-[#1E293B] p-6 rounded-lg shadow-lg hover:shadow-xl transition-shadow">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <h3 class="text-xl font-semibold text-[#3ABEFF] mb-2">
+                                            <a href="/events/<%= event.id %>">
+                                                <%= event.title %>
+                                            </a>
+                                        </h3>
+                                        <p class="text-gray-300 mb-4">
+                                            <%= event.description %>
+                                        </p>
+                                    </div>
+                                    <% if (event.event_type) { %>
+                                        <span class="bg-[#B388EB] text-white px-3 py-1 rounded-full text-sm">
+                                            <%= event.event_type %>
+                                        </span>
+                                        <% } %>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    <div class="text-sm">
+                                        <p class="text-[#10B981]">
+                                            <strong>Date:</strong>
+                                            <%= event.date %> |
+                                                <strong>Time:</strong>
+                                                <%= event.time %>
+                                        </p>
+                                        <p class="text-[#B388EB] mt-1">
+                                            <strong>Venue:</strong>
+                                            <%= event.venue %>
+                                        </p>
+                                    </div>
+                                    <div class="text-sm text-right">
+                                        <p class="text-[#3ABEFF]">
+                                            <strong>Club:</strong>
+                                            <%= event.club_name %>
+                                        </p>
+                                        <p class="text-[#B388EB] mt-1">
+                                            <strong>College:</strong>
+                                            <%= event.college_name %>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <% }) %>
+                    </div>
+                    <% } %>
+        </div>
+    </div>
+
+    <%- include('../partials/footer.ejs') %>

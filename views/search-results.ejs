@@ -1,0 +1,36 @@
+<%- include("partials/header") %>
+
+    <div class="min-h-screen bg-[#0F172A] text-white px-6 py-8">
+        <h2 class="text-2xl font-bold mb-4">Search Results for "<%= query %>"</h2>
+
+        <% if (events.length===0) { %>
+            <p>No events found matching your query.</p>
+            <% } else { %>
+                <div class="grid gap-4">
+                    <% events.forEach(event=> { %>
+                        <div class="bg-[#1E293B] p-4 rounded-lg shadow">
+                            <h3 class="text-xl font-semibold">
+                                <%= event.title %>
+                            </h3>
+                            <p class="text-gray-300">
+                                <%= event.description %>
+                            </p>
+                            <p class="text-sm mt-2 text-[#10B981]">
+                                <strong>Date:</strong>
+                                <%= event.date %> |
+                                    <strong>Time:</strong>
+                                    <%= event.time %>
+                            </p>
+                            <p class="text-sm text-[#B388EB]">
+                                <strong>Club:</strong>
+                                <%= event.club_name %> |
+                                    <strong>College:</strong>
+                                    <%= event.college_name %>
+                            </p>
+                        </div>
+                        <% }) %>
+                </div>
+                <% } %>
+    </div>
+
+    <%- include("partials/footer") %>

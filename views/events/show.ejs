@@ -1,0 +1,57 @@
+<%- include('../partials/header.ejs') %>
+
+    <div class="min-h-screen bg-[#0F172A] text-white px-6 py-8">
+        <div class="max-w-4xl mx-auto">
+            <div class="bg-[#1E293B] p-8 rounded-lg shadow-lg">
+                <div class="flex justify-between items-start mb-6">
+                    <h1 class="text-3xl font-bold text-[#3ABEFF]">
+                        <%= event.title %>
+                    </h1>
+                    <% if (event.event_type) { %>
+                        <span class="bg-[#B388EB] text-white px-4 py-1 rounded-full text-sm">
+                            <%= event.event_type %>
+                        </span>
+                        <% } %>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-[#0F172A] p-4 rounded-lg">
+                        <h3 class="text-lg font-semibold text-[#10B981] mb-2">Date & Time</h3>
+                        <p class="text-white">
+                            <%= event.date %> at <%= event.time %>
+                        </p>
+                    </div>
+
+                    <div class="bg-[#0F172A] p-4 rounded-lg">
+                        <h3 class="text-lg font-semibold text-[#10B981] mb-2">Venue</h3>
+                        <p class="text-white">
+                            <%= event.venue %>
+                        </p>
+                    </div>
+
+                    <div class="bg-[#0F172A] p-4 rounded-lg">
+                        <h3 class="text-lg font-semibold text-[#10B981] mb-2">Organizer</h3>
+                        <p class="text-white">
+                            <%= event.club_name %> at <%= event.college_name %>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mb-8">
+                    <h2 class="text-xl font-semibold text-[#3ABEFF] mb-4">About This Event</h2>
+                    <p class="text-gray-300">
+                        <%= event.description %>
+                    </p>
+                </div>
+
+                <div class="flex justify-center">
+                    <a href="/events/<%= event.id %>/register"
+                        class="bg-gradient-to-r from-[#3ABEFF] to-[#B388EB] px-8 py-3 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity">
+                        Register for this Event
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <%- include('../partials/footer.ejs') %>
