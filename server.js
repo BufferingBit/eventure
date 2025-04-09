@@ -68,14 +68,44 @@ app.get("/", async (req, res) => {
     const response = await db.query(query, values);
     const events = response.rows;
 
-    const colleges = [
-      ...new Set(events.map((event) => event.college_name || "")),
-    ];
+    const collegeRes = await db.query("SELECT id, name FROM colleges");
+    const colleges = collegeRes.rows;
 
     res.render("index", { events, colleges, searchTerm });
   } catch (error) {
     console.error(error);
     res.status(500).send("Internal Server Error");
+  }
+});
+
+app.get("/college/:id", async (req, res) => {
+  const collegeId = req.params.id;
+
+  try {
+    const collegeResult = await db.query(
+      "SELECT * FROM colleges WHERE id = $1",
+      [collegeId]
+    );
+    const college = collegeResult.rows[0];
+
+    const clubsResult = await db.query(
+      "SELECT * FROM clubs WHERE college_id = $1",
+      [collegeId]
+    );
+    const clubs = clubsResult.rows;
+
+    if (!college) {
+      return res.status(404).send("College not found");
+    }
+
+    res.render("pages/college.ejs", {
+      searchTerm: "",
+      college,
+      clubs,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server error");
   }
 });
 

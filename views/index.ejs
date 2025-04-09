@@ -17,61 +17,58 @@
 
 <body class="min-h-screen flex flex-col">
     <div class="flex-grow">
-    <%- include('partials/header.ejs') %>
-
-        <section class="px-8 py-6">
-            <h2 class="text-xl font-semibold mb-4">Colleges</h2>
-            <div class="flex flex-wrap gap-4">
-                <% colleges.forEach(college=> { %>
-                    <div class="bg-white shadow rounded-lg p-4 w-44 text-center">
-                        <img src="/images/college_logos/<%= college.replace(/\s/g, '_') %>.png" alt="<%= college %>"
-                            class="w-full h-20 object-contain mb-2"
-                            onerror="this.src='/images/default-college-logo.png'" />
-                        <p class="text-sm font-medium">
-                            <%= college.split(" ").slice(0, 6).join(" ") %><%= college.split(" ").length > 6 ? " ..."
-                                : "" %>
-                        </p>
-                    </div>
-                    <% }) %>
-            </div>
-        </section>
-
-        <% function formatDate(dateStr) { const date=new Date(dateStr); return date.toLocaleDateString('en-US', {
-            year: 'numeric' , month: 'long' , day: 'numeric' }); } %>
-
-
+        <%- include('partials/header.ejs') %>
 
             <section class="px-8 py-6">
-                <h2 class="text-xl font-semibold mb-4">Upcoming Events</h2>
-                <% if (events.length> 0) { %>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                        <% events.forEach(event=> { %>
-                            <div class="bg-white shadow rounded-lg overflow-hidden">
-                                <img src="/images/event_logos/<%= event.title.replace(/\s/g, '_') %>.jpeg"
-                                    alt="<%= event.title %>" class="w-full h-40 object-cover"
-                                    onerror="this.src='/images/default-event-image.jpg'" />
-                                <div class="p-4">
-                                    <h3 class="text-lg font-bold">
-                                        <%= event.title %>
-                                    </h3>
-                                    <p class="text-sm text-gray-600">
-                                        <%= event.college_name %>
-                                    </p>
-                                    <p class="text-sm font-medium mt-2">📅 <%= formatDate(event.date) %>
+                <h2 class="text-xl font-semibold mb-4">Colleges</h2>
+                <div class="flex flex-wrap gap-4">
+                    <% colleges.forEach(college=> { %>
+                        <a href="/college/<%= college.id %>"
+                            class="bg-white shadow rounded-lg p-4 w-40 text-center hover:shadow-lg transition block">
+                            <img src="/images/college_logos/<%= college.name.toLowerCase().replace(/\s/g, '_') %>.png"
+                                alt="<%= college.name %>" class="w-full h-16 object-contain mb-2"
+                                onerror="this.src='/images/default-college-logo.png'" />
+                            <p class="text-sm font-medium">
+                                <%= college.name.length> 20 ? college.name.substring(0, 20) + '...' : college.name %>
+                            </p>
+                        </a>
+                        <% }) %>
 
-                                    </p>
-                                </div>
-                            </div>
-                            <% }) %>
-                    </div>
-                    <% } else { %>
-                        <p>No matching events found for "<%= searchTerm %>"</p>
-                        <% } %>
+                </div>
             </section>
 
+            <% function formatDate(dateStr) { try { const date=new Date(dateStr); return
+                date.toLocaleDateString('en-US', { year: 'numeric' , month: 'long' , day: 'numeric' }); } catch(e) {
+                return dateStr; } } %>
 
-        </div>
-            <%- include('partials/footer.ejs') %>
+                <section class="px-8 py-6">
+                    <h2 class="text-xl font-semibold mb-4">Upcoming Events</h2>
+                    <% if (events.length> 0) { %>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                            <% events.forEach(event=> { %>
+                                <div class="bg-white shadow rounded-lg overflow-hidden">
+                                    <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
+                                        alt="<%= event.title %>" class="w-full h-40 object-cover"
+                                        onerror="this.src='/images/default-event-image.jpg'" />
+                                    <div class="p-4">
+                                        <h3 class="text-lg font-bold">
+                                            <%= event.title %>
+                                        </h3>
+                                        <p class="text-sm text-gray-600">
+                                            <%= event.college_name %>
+                                        </p>
+                                        <p class="text-sm font-medium mt-2">📅 <%= formatDate(event.date) %>
+                                        </p>
+                                    </div>
+                                </div>
+                                <% }) %>
+                        </div>
+                        <% } else { %>
+                            <p>No matching events found for "<%= searchTerm %>"</p>
+                            <% } %>
+                </section>
+    </div>
+    <%- include('partials/footer.ejs') %>
 </body>
 
 </html>
