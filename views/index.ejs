@@ -27,7 +27,7 @@
                             class="bg-white shadow rounded-lg p-4 w-40 text-center hover:shadow-lg transition block">
                             <img src="/images/college_logos/<%= college.name.toLowerCase().replace(/\s/g, '_') %>.png"
                                 alt="<%= college.name %>" class="w-full h-16 object-contain mb-2"
-                                onerror="this.src='/images/default-college-logo.png'" />
+                                onerror="this.src='/images/college_logos/default-college-logo.png'" />
                             <p class="text-sm font-medium">
                                 <%= college.name.length> 20 ? college.name.substring(0, 20) + '...' : college.name %>
                             </p>
@@ -37,19 +37,15 @@
                 </div>
             </section>
 
-            <% function formatDate(dateStr) { try { const date=new Date(dateStr); return
-                date.toLocaleDateString('en-US', { year: 'numeric' , month: 'long' , day: 'numeric' }); } catch(e) {
-                return dateStr; } } %>
-
                 <section class="px-8 py-6">
                     <h2 class="text-xl font-semibold mb-4">Upcoming Events</h2>
                     <% if (events.length> 0) { %>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-10">
                             <% events.forEach(event=> { %>
                                 <div class="bg-white shadow rounded-lg overflow-hidden">
                                     <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
-                                        alt="<%= event.title %>" class="w-full h-40 object-cover"
-                                        onerror="this.src='/images/default-event-image.jpg'" />
+                                        alt="<%= event.title %>" class="w-full h-45 object-cover"
+                                        onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
                                     <div class="p-4">
                                         <h3 class="text-lg font-bold">
                                             <%= event.title %>
@@ -57,8 +53,8 @@
                                         <p class="text-sm text-gray-600">
                                             <%= event.college_name %>
                                         </p>
-                                        <p class="text-sm font-medium mt-2">📅 <%= formatDate(event.date) %>
-                                        </p>
+                                        <p class="text-sm font-medium mt-2">📅 <%= event.formattedDate %></p>
+                                        <p class="text-sm font-medium">⏰ <%= event.formattedTime %></p>
                                     </div>
                                 </div>
                                 <% }) %>
