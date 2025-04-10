@@ -39,29 +39,31 @@
 
                 <section class="px-8 py-6">
                     <h2 class="text-xl font-semibold mb-4">Upcoming Events</h2>
-                    <% if (events.length> 0) { %>
+                    <% if (events.length > 0) { %>
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-10">
-                            <% events.forEach(event=> { %>
-                                <div class="bg-white shadow rounded-lg overflow-hidden">
-                                    <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
-                                        alt="<%= event.title %>" class="w-full h-45 object-cover"
-                                        onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
-                                    <div class="p-4">
-                                        <h3 class="text-lg font-bold">
-                                            <%= event.title %>
-                                        </h3>
-                                        <p class="text-sm text-gray-600">
-                                            <%= event.college_name %>
-                                        </p>
-                                        <p class="text-sm font-medium mt-2">📅 <%= event.formattedDate %></p>
-                                        <p class="text-sm font-medium">⏰ <%= event.formattedTime %></p>
+                            <% events.forEach(event => { %>
+                                <a href="/event/<%= event.id %>" class="block transform hover:scale-105 transition-all duration-200 ease-in-out">
+                                    <div class="bg-white shadow rounded-lg overflow-hidden hover:shadow-lg">
+                                        <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
+                                            alt="<%= event.title %>" class="w-full h-45 object-cover"
+                                            onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
+                                        <div class="p-4">
+                                            <h3 class="text-lg font-bold">
+                                                <%= event.title %>
+                                            </h3>
+                                            <p class="text-sm text-gray-600">
+                                                <%= event.college_name %>
+                                            </p>
+                                            <p class="text-sm font-medium mt-2">📅 <%= event.formattedDate %></p>
+                                            <p class="text-sm font-medium">⏰ <%= event.formattedTime %></p>
+                                        </div>
                                     </div>
-                                </div>
-                                <% }) %>
+                                </a>
+                            <% }) %>
                         </div>
-                        <% } else { %>
-                            <p>No matching events found for "<%= searchTerm %>"</p>
-                            <% } %>
+                    <% } else { %>
+                        <p>No matching events found for "<%= searchTerm %>"</p>
+                    <% } %>
                 </section>
     </div>
     <%- include('partials/footer.ejs') %>

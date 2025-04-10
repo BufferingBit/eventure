@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= club.name %> | Eventure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen flex flex-col bg-gray-50">
+    <%- include('../partials/header.ejs') %>
+
+    <main class="flex-grow">
+        <!-- Club Header -->
+        <div class="max-w-6xl mx-auto px-4 py-6">
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <div class="flex flex-col md:flex-row gap-8 items-center md:items-start">
+                    <div class="w-32 h-32 flex-shrink-0">
+                        <img src="/images/club_logos/<%= club.logo %>" 
+                             alt="<%= club.name %>" 
+                             class="w-full h-full object-contain"
+                             onerror="this.src='/images/club_logos/default_club_logo.png'" />
+                    </div>
+                    <div class="flex-grow text-center md:text-left">
+                        <h1 class="text-3xl font-bold mb-2"><%= club.name %></h1>
+                        <p class="text-gray-600 mb-4"><%= club.description %></p>
+                        <div class="flex flex-wrap gap-4 justify-center md:justify-start">
+                            <% if (user) { %>
+                                <button
+                                    onclick="toggleClubFollow(<%= club.id %>)"
+                                    class="follow-btn px-6 py-2 rounded-full shadow-md text-sm transition-all duration-300
+                                           <%= isFollowing ? 'bg-green-600 text-white' : 'bg-blue-600 text-white' %>"
+                                    data-following="<%= isFollowing %>">
+                                    <span class="flex items-center gap-2">
+                                        <%= isFollowing ? '✓ Following' : 'Follow' %>
+                                    </span>
+                                </button>
+                            <% } else { %>
+                                <a href="/login" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full shadow-md text-sm">
+                                    Login to Follow
+                                </a>
+                            <% } %>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-4 items-center">
+                        <div class="bg-gradient-to-r from-blue-300 to-blue-500 rounded-xl px-6 py-4 text-center shadow text-white min-w-[120px]">
+                            <p class="text-sm font-medium">Followers</p>
+                            <p class="text-2xl font-bold"><%= followersCount %></p>
+                        </div>
+                        <div class="bg-gradient-to-r from-purple-300 to-purple-500 rounded-xl px-6 py-4 text-center shadow text-white min-w-[120px]">
+                            <p class="text-sm font-medium">Events</p>
+                            <p class="text-2xl font-bold"><%= eventsCount %></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Events Section -->
+        <div class="max-w-6xl mx-auto px-4 py-6">
+            <h2 class="text-2xl font-bold mb-6">Upcoming Events</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                <% events.forEach(event => { %>
+                    <a href="/event/<%= event.id %>" class="block">
+                        <div class="bg-white rounded-xl shadow hover:shadow-md transition">
+                            <img src="/images/event_logos/<%= event.logo %>" 
+                                 alt="<%= event.title %>" 
+                                 class="w-full h-48 object-cover rounded-t-xl"
+                                 onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold mb-2"><%= event.title %></h3>
+                                <p class="text-sm text-gray-600">📅 <%= event.formattedDate %></p>
+                                <p class="text-sm text-gray-600">⏰ <%= event.formattedTime %></p>
+                            </div>
+                        </div>
+                    </a>
+                <% }) %>
+            </div>
+        </div>
+    </main>
+
+    <%- include('../partials/footer.ejs') %>
+
+    <script>
+        async function toggleClubFollow(clubId) {
+            try {
+                const btn = document.querySelector('.follow-btn');
+                const isFollowing = btn.dataset.following === 'true';
+                
+                const response = await fetch(`/club/${clubId}/follow`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ action: isFollowing ? 'unfollow' : 'follow' })
+                });
+        
+                const data = await response.json();
+                if (data.success) {
+                    btn.dataset.following = !isFollowing;
+                    
+                    // Update button text and styling with animation
+                    btn.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        btn.style.transform = 'scale(1)';
+                    }, 100);
+        
+                    if (isFollowing) {
+                        btn.classList.remove('bg-green-600');
+                        btn.classList.add('bg-blue-600');
+                        btn.querySelector('span').innerHTML = 'Follow';
+                    } else {
+                        btn.classList.remove('bg-blue-600');
+                        btn.classList.add('bg-green-600');
+                        btn.querySelector('span').innerHTML = '✓ Following';
+                    }
+
+                    // Update followers count
+                    const followersElement = document.querySelector('.followers-count');
+                    if (followersElement) {
+                        const currentCount = parseInt(followersElement.textContent);
+                        followersElement.textContent = isFollowing ? currentCount - 1 : currentCount + 1;
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to update follow status');
+            }
+        }
+    </script>
+</body>
+</html>

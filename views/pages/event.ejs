@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title><%= event.title %> | Eventure</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .tab-btn {
+      color: #6B7280;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab-btn.active {
+      color: #1D4ED8;
+      border-bottom: 2px solid #1D4ED8;
+    }
+
+    .tab-content {
+      display: block;
+    }
+
+    .tab-content.hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gray-100 flex flex-col">
+  <div class="flex-grow">
+    <%- include('../partials/header.ejs') %>
+
+    <main class="max-w-5xl mx-auto px-6 py-10">
+      <div class="bg-white shadow-xl rounded-2xl overflow-hidden grid lg:grid-cols-2 gap-6">
+        
+        <!-- Event Image -->
+        <div class="h-80 lg:h-auto">
+          <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
+            alt="<%= event.title %>"
+            class="w-full h-full object-cover"
+            onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
+        </div>
+
+        <!-- Event Info -->
+        <div class="p-8 flex flex-col justify-between">
+          <div>
+            <h1 class="text-4xl font-extrabold mb-2 text-gray-800"><%= event.title %></h1>
+            <p class="text-gray-600 mb-1">🎓 <%= event.club_name %></p>
+            <p class="text-gray-600 mb-4">📍 <%= event.venue %></p>
+
+            <div class="flex items-center gap-6 flex-wrap mb-6">
+              <div>
+                <p class="text-sm text-gray-500">📅 Date</p>
+                <p class="font-semibold text-gray-800"><%= event.formattedDate %></p>
+              </div>
+              <div>
+                <p class="text-sm text-gray-500">🕒 Time</p>
+                <p class="font-semibold text-gray-800"><%= event.formattedTime %></p>
+              </div>
+            </div>
+
+            <% if (user) { %>
+              <button onclick="registerForEvent()" class="bg-blue-600 text-white font-semibold px-6 py-2 rounded-lg hover:bg-blue-700 transition-all duration-200">
+                Register
+              </button>
+            <% } else { %>
+              <a href="/auth/google" class="bg-blue-600 text-white font-semibold px-6 py-2 rounded-lg hover:bg-blue-700 transition-all duration-200">
+                Login to Register
+              </a>
+            <% } %>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="mt-10 border-b border-gray-200">
+        <ul class="flex gap-8 text-lg font-medium">
+          <button 
+            onclick="switchTab('details')" 
+            class="tab-btn pb-3 transition-all duration-200"
+            data-tab="details">
+            Details
+          </button>
+          <button 
+            onclick="switchTab('dates')" 
+            class="tab-btn pb-3 transition-all duration-200"
+            data-tab="dates">
+            Dates & Deadlines
+          </button>
+          <button 
+            onclick="switchTab('prizes')" 
+            class="tab-btn pb-3 transition-all duration-200"
+            data-tab="prizes">
+            Prizes
+          </button>
+          <button 
+            onclick="switchTab('faqs')" 
+            class="tab-btn pb-3 transition-all duration-200"
+            data-tab="faqs">
+            FAQs
+          </button>
+        </ul>
+      </div>
+
+      <!-- Tab Contents -->
+      <div class="mt-6">
+        <!-- Details Section -->
+        <div id="details-section" class="tab-content">
+          <div class="prose max-w-none text-gray-800">
+            <p><%= event.description %></p>
+          </div>
+        </div>
+
+        <!-- Dates Section -->
+        <div id="dates-section" class="tab-content hidden">
+          <div class="space-y-4">
+            <div class="bg-white p-4 rounded-lg shadow">
+              <h3 class="font-semibold text-lg mb-2">Registration Deadline</h3>
+              <p class="text-gray-600">📅 <%= event.formattedDate %></p>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow">
+              <h3 class="font-semibold text-lg mb-2">Event Date</h3>
+              <p class="text-gray-600">📅 <%= event.formattedDate %></p>
+              <p class="text-gray-600">⏰ <%= event.formattedTime %></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Prizes Section -->
+        <div id="prizes-section" class="tab-content hidden">
+          <div class="space-y-4">
+            <div class="bg-white p-4 rounded-lg shadow">
+              <h3 class="font-semibold text-lg mb-2">Prizes</h3>
+              <ul class="list-disc list-inside space-y-2 text-gray-600">
+                <li>First Prize: <%= event.first_prize || 'To be announced' %></li>
+                <li>Second Prize: <%= event.second_prize || 'To be announced' %></li>
+                <li>Third Prize: <%= event.third_prize || 'To be announced' %></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- FAQs Section -->
+        <div id="faqs-section" class="tab-content hidden">
+          <div class="space-y-4">
+            <div class="bg-white p-4 rounded-lg shadow">
+              <h3 class="font-semibold text-lg mb-2">Frequently Asked Questions</h3>
+              <div class="space-y-4 text-gray-600">
+                <% if (event.faqs && event.faqs.length > 0) { %>
+                  <% event.faqs.forEach(faq => { %>
+                    <div>
+                      <h4 class="font-medium">Q: <%= faq.question %></h4>
+                      <p class="mt-1">A: <%= faq.answer %></p>
+                    </div>
+                  <% }) %>
+                <% } else { %>
+                  <p>No FAQs available for this event.</p>
+                <% } %>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <%- include('../partials/footer.ejs') %>
+
+  <script>
+    function switchTab(tabName) {
+      // Hide all content sections
+      document.querySelectorAll('.tab-content').forEach(section => {
+        section.classList.add('hidden');
+      });
+      
+      // Show selected content section
+      const selectedSection = document.getElementById(`${tabName}-section`);
+      if (selectedSection) {
+        selectedSection.classList.remove('hidden');
+      }
+      
+      // Update tab button styles
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      
+      const selectedTab = document.querySelector(`[data-tab="${tabName}"]`);
+      if (selectedTab) {
+        selectedTab.classList.add('active');
+      }
+    }
+    
+    // Initialize the first tab as active when the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      switchTab('details');
+    });
+  </script>
+  <script>
+    async function registerForEvent() {
+      try {
+        const response = await fetch('/event/<%= event.id %>/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          alert('Successfully registered for the event!');
+        } else {
+          alert(data.message || 'Registration failed. Please try again.');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Registration failed. Please try again.');
+      }
+    }
+  </script>
+</body>
+</html>

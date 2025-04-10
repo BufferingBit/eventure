@@ -5,6 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title><%= college.name %> | Eventure</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .tab-btn {
+      background-color: #E5E7EB;
+      color: #4B5563;
+    }
+
+    .tab-btn.active {
+      background-color: #1D4ED8;
+      color: white;
+    }
+
+    .tab-content {
+      display: block;
+    }
+
+    .tab-content.hidden {
+      display: none;
+    }
+  </style>
 </head>
 <body class="bg-white dark:bg-gray-100 text-gray-800 dark:text-black min-h-screen flex flex-col">
   <div class="flex-grow">
@@ -19,7 +38,22 @@
       <div>
         <h2 class="text-2xl font-bold whitespace-nowrap"><%= college.name %></h2>
         <p class="text-gray-500"><%= college.location %></p>
-        <button class="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full shadow-md text-sm">Follow</button>
+        <% if (user) { %>
+            <button
+                onclick="toggleFollow(<%= college.id %>)"
+                class="mt-3 px-5 py-2 rounded-full shadow-md text-sm follow-btn transition-all duration-300 ease-in-out
+                       <%= isFollowing ? 'bg-green-600 text-white' : 'bg-blue-600 text-white' %>"
+                data-following="<%= isFollowing %>"
+            >
+                <span class="flex items-center gap-2 ">
+                    <%= isFollowing ? '✓ Following' : 'Follow' %>
+                </span>
+            </button>
+        <% } else { %>
+            <a href="/login" class="mt-2 bg-blue-600 hover:bg-blue-700 block whitespace-nowrap text-white px-5 py-2 rounded-full shadow-md text-sm">
+                Login to Follow
+            </a>
+        <% } %>
       </div>
     </div>
     <div class="flex gap-6">
@@ -27,41 +61,198 @@
         <p class="text-sm font-medium">Clubs</p>
         <p class="text-2xl font-bold"><%= clubCount %></p>
       </div>
-      <div class="bg-gradient-to-r from-blue-300 to-blue-500 rounded-xl px-6 py-4 text-center shadow text-white min-w-[100px]">
-        <p class="text-sm font-medium">Following</p>
-        <p class="text-2xl font-bold">6799</p>
+      <div class="bg-gradient-to-r from-purple-300 to-purple-500 rounded-xl px-6 py-4 text-center shadow text-white min-w-[100px]">
+        <p class="text-sm font-medium">Followers</p>
+        <p class="text-2xl font-bold"><%= followersCount %></p>
       </div>
     </div>
   </div>
 
   <!-- Tabs -->
   <div class="flex justify-center gap-4 mb-6">
-    <button class="bg-blue-700 text-white px-6 py-2 rounded-lg shadow font-medium hover:opacity-90">Clubs</button>
-    <button class="bg-blue-700 text-white px-6 py-2 rounded-lg shadow font-medium hover:opacity-90">Societies</button>
-    <button class="bg-blue-700 text-white px-6 py-2 rounded-lg shadow font-medium hover:opacity-90">Fests</button>
+    <button 
+      onclick="switchTab('events')" 
+      class="tab-btn px-6 py-2 rounded-lg shadow font-medium transition-all duration-300"
+      data-tab="events">
+      Upcoming Events
+    </button>
+    <button 
+      onclick="switchTab('clubs')" 
+      class="tab-btn px-6 py-2 rounded-lg shadow font-medium transition-all duration-300"
+      data-tab="clubs">
+      Clubs
+    </button>
+    <button 
+      onclick="switchTab('societies')" 
+      class="tab-btn px-6 py-2 rounded-lg shadow font-medium transition-all duration-300"
+      data-tab="societies">
+      Societies
+    </button>
+    <button 
+      onclick="switchTab('fests')" 
+      class="tab-btn px-6 py-2 rounded-lg shadow font-medium transition-all duration-300"
+      data-tab="fests">
+      Fests
+    </button>
   </div>
 
-  <!-- Events Grid -->
+  <!-- Content Sections -->
   <div class="max-w-6xl mx-auto px-4 mb-16">
-    <h2 class="text-xl font-semibold mb-4">Upcoming Events</h2>
-    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-      <% events.forEach(event => { %>
-        <div class="bg-white rounded-xl shadow hover:shadow-md transition overflow-hidden">
-          <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg" 
-               alt="<%= event.title %>" 
-               class="w-full h-40 object-cover" 
-               onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
-          <div class="p-4">
-            <h3 class="text-lg font-semibold truncate"><%= event.title %></h3>
-            <p class="text-sm text-gray-600 truncate"><%= event.college_name %></p>
-            <p class="text-sm font-medium mt-2">📅 <%= event.formattedDate %></p>
-            <p class="text-sm font-medium">⏰ <%= event.formattedTime %></p>
-          </div>
-        </div>
-      <% }) %>
+    <!-- Events Section -->
+    <div id="events-section" class="tab-content">
+      <h2 class="text-xl font-semibold mb-4">Upcoming Events</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+        <% events.forEach(event => { %>
+          <a href="/event/<%= event.id %>" class="block">
+            <div class="bg-white rounded-xl shadow hover:shadow-md transition overflow-hidden">
+              <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg" 
+                  alt="<%= event.title %>" 
+                  class="w-full h-40 object-cover" 
+                  onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
+              <div class="p-4">
+                <h3 class="text-lg font-semibold truncate"><%= event.title %></h3>
+                <p class="text-sm text-gray-600 truncate"><%= event.club_name %></p>
+                <p class="text-sm font-medium mt-2">📅 <%= event.formattedDate %></p>
+                <p class="text-sm font-medium">⏰ <%= event.formattedTime %></p>
+              </div>
+            </div>
+          </a>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Clubs Section -->
+    <div id="clubs-section" class="tab-content hidden">
+      <h2 class="text-xl font-semibold mb-4">Clubs</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <% clubs.CLUB.forEach(club => { %>
+          <a href="/club/<%= club.id %>" class="block">
+            <div class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition-shadow">
+              <img src="/images/club_logos/<%= club.logo %>" 
+                   alt="<%= club.name %>" 
+                   class="w-full h-32 object-contain mb-4"
+                   onerror="this.src='/images/club_logos/default_club_logo.png'" />
+              <h3 class="text-lg font-semibold mb-2"><%= club.name %></h3>
+              <p class="text-sm text-gray-600"><%= club.description || 'No description available' %></p>
+            </div>
+          </a>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Societies Section -->
+    <div id="societies-section" class="tab-content hidden">
+      <h2 class="text-xl font-semibold mb-4">Societies</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <% clubs.SOCIETY.forEach(society => { %>
+          <a href="/club/<%= society.id %>" class="block">
+            <div class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition-shadow">
+              <img src="/images/society_logos/society_default_logo.png" 
+                   alt="<%= society.name %>" 
+                   class="w-full h-32 object-contain mb-4"
+                   onerror="this.src='/images/club_logos/default-club-logo.png'" />
+              <h3 class="text-lg font-semibold mb-2"><%= society.name %></h3>
+              <p class="text-sm text-gray-600"><%= society.description || 'No description available' %></p>
+            </div>
+          </a>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Fests Section -->
+    <div id="fests-section" class="tab-content hidden">
+      <h2 class="text-xl font-semibold mb-4">Fests</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <% clubs.FEST.forEach(fest => { %>
+          <a href="/club/<%= fest.id %>" class="block">
+            <div class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition-shadow">
+              <img src="/images/fest_logos/fest_default_logo.jpg" 
+                   alt="<%= fest.name %>" 
+                   class="w-full h-32 object-contain mb-4"
+                   onerror="this.src='/images/club_logos/default-club-logo.png'" />
+              <h3 class="text-lg font-semibold mb-2"><%= fest.name %></h3>
+              <p class="text-sm text-gray-600"><%= fest.description || 'No description available' %></p>
+            </div>
+          </a>
+        <% }) %>
+      </div>
     </div>
   </div>
 </div>
   <%- include('../partials/footer.ejs') %>
+
+
+
+  <script>
+    function switchTab(tabName) {
+      // Hide all content sections
+      document.querySelectorAll('.tab-content').forEach(section => {
+        section.classList.add('hidden');
+      });
+      
+      // Show selected content section
+      const selectedSection = document.getElementById(`${tabName}-section`);
+      if (selectedSection) {
+        selectedSection.classList.remove('hidden');
+      }
+      
+      // Update tab button styles
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      
+      const selectedTab = document.querySelector(`[data-tab="${tabName}"]`);
+      if (selectedTab) {
+        selectedTab.classList.add('active');
+      }
+    }
+    
+    // Initialize the first tab as active when the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      // Set initial active tab
+      switchTab('events');
+    });
+    
+    async function toggleFollow(collegeId) {
+        try {
+            const btn = document.querySelector('.follow-btn');
+            const isFollowing = btn.dataset.following === 'true';
+            
+            const response = await fetch(`/college/${collegeId}/follow`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ action: isFollowing ? 'unfollow' : 'follow' })
+            });
+    
+            const data = await response.json();
+            if (data.success) {
+                btn.dataset.following = !isFollowing;
+                
+                // Update button text and styling with animation
+                btn.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    btn.style.transform = 'scale(1)';
+                }, 100);
+    
+                if (isFollowing) {
+                    btn.classList.remove('bg-green-600');
+                    btn.classList.add('bg-blue-600');
+                    btn.querySelector('span').innerHTML = 'Follow';
+                } else {
+                    btn.classList.remove('bg-blue-600');
+                    btn.classList.add('bg-green-600');
+                    btn.querySelector('span').innerHTML = '✓ Following';
+                }
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to update follow status');
+        }
+    }
+    </script>
 </body>
 </html>
+
+
