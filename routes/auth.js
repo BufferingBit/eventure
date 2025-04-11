@@ -4,7 +4,7 @@ import passport from '../config/auth.js';
 const router = express.Router();
 
 // Authentication middleware
-export const isAuthenticated = (req, res, next) => {
+const isAuthenticated = (req, res, next) => {
   if (req.isAuthenticated()) {
     return next();
   }
@@ -26,7 +26,7 @@ router.get('/auth/google',
 );
 
 router.get('/auth/google/callback',
-  passport.authenticate('google', { 
+  passport.authenticate('google', {
     failureRedirect: '/login',
     successRedirect: '/'
   })
@@ -42,5 +42,5 @@ router.get('/logout', (req, res) => {
   });
 });
 
-// Make sure to export both the router as default and isAuthenticated as a named export
+// Export both the router as default and isAuthenticated as a named export
 export { router as default, isAuthenticated };

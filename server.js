@@ -6,7 +6,7 @@ import path from "path";
 import db from "./db.js";
 import session from "express-session";
 import passport from "./config/auth.js";
-import { router as authRoutes, isAuthenticated } from "./routes/auth.js";
+import authRoutes, { isAuthenticated } from "./routes/auth.js";
 import fs from "fs";
 import bcrypt from "bcrypt";
 
@@ -60,7 +60,7 @@ const isClubAdmin = async (req, res, next) => {
       return res.redirect("/login");
     }
 
-    req.user.club_id = Number(clubId); 
+    req.user.club_id = Number(clubId);
     return next();
   } catch (error) {
     console.error("Error in club admin middleware:", error);
@@ -159,18 +159,18 @@ app.get('/', async (req, res) => {
     const filter = req.query.filter || 'all';
 
     const collegesQuery = `
-      SELECT id, name, location 
-      FROM colleges 
+      SELECT id, name, location
+      FROM colleges
       WHERE LOWER(name) LIKE LOWER($1)
       ORDER BY name`;
     const collegesResult = await db.query(collegesQuery, [`%${searchTerm}%`]);
 
     let eventsQuery = `
-      SELECT 
-        e.id, 
-        e.title, 
-        e.description, 
-        e.date, 
+      SELECT
+        e.id,
+        e.title,
+        e.description,
+        e.date,
         e.time,
         e.venue,
         c.name AS college_name
@@ -187,7 +187,7 @@ app.get('/', async (req, res) => {
     // Add search condition if search term exists
     if (searchTerm) {
       eventsQuery += ` AND (
-        LOWER(e.title) LIKE LOWER($1) OR 
+        LOWER(e.title) LIKE LOWER($1) OR
         LOWER(c.name) LIKE LOWER($1)
       )`;
     }
@@ -216,7 +216,7 @@ app.get('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching data:', error);
-    res.status(500).render('error', { 
+    res.status(500).render('error', {
       message: 'Failed to load homepage',
       error: error
     });
@@ -231,8 +231,8 @@ app.get('/super-admin', isSuperAdmin, async (req, res) => {
         const searchQuery = `%${searchTerm}%`;
 
         const collegesResult = await db.query(
-            `SELECT c.*, u.name as admin_name, u.email as admin_email 
-             FROM colleges c 
+            `SELECT c.*, u.name as admin_name, u.email as admin_email
+             FROM colleges c
              LEFT JOIN users u ON u.college_id = c.id AND u.role = 'college_admin'
              WHERE LOWER(c.name) LIKE LOWER($1) OR LOWER(c.location) LIKE LOWER($1)
              ORDER BY c.name ASC`,
@@ -266,16 +266,16 @@ app.post('/college/new', isSuperAdmin, upload.single('logo'), async (req, res) =
   const client = await db.pool.connect();
   try {
       await client.query('BEGIN');
-      
+
       const { name, location, admin_name, admin_email, admin_password } = req.body;
 
       const collegeResult = await client.query(
-          `INSERT INTO colleges (name, location, logo) 
-           VALUES ($1, $2, $3) 
+          `INSERT INTO colleges (name, location, logo)
+           VALUES ($1, $2, $3)
            RETURNING id`,
           [
-              name, 
-              location, 
+              name,
+              location,
               req.file ? `/images/college_logos/${req.file.filename}` : '/images/college_logos/default-college-logo.png'
           ]
       );
@@ -321,7 +321,7 @@ app.get('/college-admin/new', isSuperAdmin, async (req, res) => {
 
       res.render('pages/college-admin-form', {
           user: req.user,
-          colleges: collegesResult.rows,  
+          colleges: collegesResult.rows,
           error: null,
           mode: 'create',
           searchTerm: req.query.search || ''
@@ -336,7 +336,7 @@ app.post('/college-admin/new', isSuperAdmin, async (req, res) => {
   const client = await db.pool.connect();
   try {
       await client.query('BEGIN');
-      
+
       const { name, email, password, college_id } = req.body;
 
       // Basic validation
@@ -420,8 +420,8 @@ app.get("/college/:id", async (req, res) => {
     console.log("followersCount:", followersCount);
 
     const clubsResult = await db.query(
-      `SELECT id, name, type, description, logo 
-       FROM clubs 
+      `SELECT id, name, type, description, logo
+       FROM clubs
        WHERE college_id = $1`,
       [collegeId]
     );
@@ -448,14 +448,14 @@ app.get("/college/:id", async (req, res) => {
     // Fetch upcoming events
     const eventsResult = await db.query(
       `
-      SELECT 
-        e.id, 
-        e.title, 
-        e.description, 
-        e.date, 
-        e.time, 
-        e.venue, 
-        e.role_tag, 
+      SELECT
+        e.id,
+        e.title,
+        e.description,
+        e.date,
+        e.time,
+        e.venue,
+        e.role_tag,
         e.event_type,
         c.name AS club_name,
         c.type AS club_type,
@@ -498,7 +498,7 @@ app.get("/profile", isAuthenticated, async (req, res) => {
     const userId = req.user.id;
     const userResult = await db.query(
       `
-      SELECT 
+      SELECT
         u.*,
         c.name as college_name
       FROM users u
@@ -522,7 +522,7 @@ app.get("/profile", isAuthenticated, async (req, res) => {
 
     const participatedEventsResult = await db.query(
       `
-      SELECT 
+      SELECT
         e.*,
         c.name AS club_name,
         col.name AS college_name
@@ -537,17 +537,17 @@ app.get("/profile", isAuthenticated, async (req, res) => {
     );
 
     const userWithFollowing = await db.query(
-      `SELECT u.*, 
+      `SELECT u.*,
               ARRAY_AGG(DISTINCT c.id) as followed_club_ids,
               json_agg(DISTINCT jsonb_build_object(
                   'id', c.id,
                   'name', c.name,
                   'logo', c.logo
               )) FILTER (WHERE c.id IS NOT NULL) as following_clubs
-       FROM users u 
-       LEFT JOIN club_followers cf ON u.id = cf.user_id 
-       LEFT JOIN clubs c ON cf.club_id = c.id 
-       WHERE u.id = $1 
+       FROM users u
+       LEFT JOIN club_followers cf ON u.id = cf.user_id
+       LEFT JOIN clubs c ON cf.club_id = c.id
+       WHERE u.id = $1
        GROUP BY u.id`,
       [userId]
     );
@@ -603,7 +603,7 @@ app.get("/profile/edit", isAuthenticated, async (req, res) => {
   try {
     const userResult = await db.query(
       `
-      SELECT 
+      SELECT
         u.*,
         c.name as college_name
       FROM users u
@@ -654,14 +654,14 @@ app.post('/profile/update', isAuthenticated, upload.single('photo'), async (req,
       'SELECT role, club_id, college_id FROM users WHERE id = $1',
       [userId]
     );
-    
+
     userRole = userResult.rows[0].role;
     currentClubId = userResult.rows[0].club_id;
     currentCollegeId = userResult.rows[0].college_id;
 
     // Determine the final club_id and college_id based on role
     let finalClubId, finalCollegeId;
-    
+
     // Handle club_id
     if (userRole === 'club_admin') {
       finalClubId = currentClubId;
@@ -683,9 +683,9 @@ app.post('/profile/update', isAuthenticated, upload.single('photo'), async (req,
 
     // Update user data
     await client.query(
-      `UPDATE users 
-       SET name = $1, 
-           bio = $2, 
+      `UPDATE users
+       SET name = $1,
+           bio = $2,
            college_id = $3,
            club_id = $4,
            skills = $5::jsonb,
@@ -762,13 +762,13 @@ app.get('/club/new', isCollegeAdmin, async (req, res) => {
 
 app.post('/club/new', isCollegeAdmin, upload.single('logo'), async (req, res) => {
   const client = await db.pool.connect();
-  
+
   try {
     await client.query('BEGIN');
-    
-    const { 
+
+    const {
       name, description, type,
-      adminName, adminEmail, adminPassword, adminPhone 
+      adminName, adminEmail, adminPassword, adminPhone
     } = req.body;
 
     // Debug log
@@ -778,7 +778,7 @@ app.post('/club/new', isCollegeAdmin, upload.single('logo'), async (req, res) =>
     // Normalize the type field
     const normalizedType = type?.toString().toUpperCase().trim();
     console.log('Normalized type:', normalizedType);
-    
+
     // Validate type
     if (!['CLUB', 'SOCIETY', 'FEST'].includes(normalizedType)) {
       throw new Error(`Invalid club type: ${normalizedType}`);
@@ -829,7 +829,7 @@ app.post('/club/new', isCollegeAdmin, upload.single('logo'), async (req, res) =>
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error creating club:', error);
-    
+
     const collegeResult = await db.query(
       "SELECT * FROM colleges WHERE id = $1",
       [req.user.college_id]
@@ -852,10 +852,10 @@ app.post('/club/new', isCollegeAdmin, upload.single('logo'), async (req, res) =>
 app.get('/club/:id/edit', isCollegeAdmin, async (req, res) => {
   try {
       const clubId = parseInt(req.params.id);
-      
+
       // Verify the club belongs to the admin's college
       const clubResult = await db.query(
-          `SELECT c.* 
+          `SELECT c.*
            FROM clubs c
            WHERE c.id = $1 AND c.college_id = $2`,
           [clubId, req.user.college_id]
@@ -918,16 +918,16 @@ app.post('/club/:id/edit', isCollegeAdmin, upload.single('logo'), async (req, re
 
       // Update club
       const updateQuery = `
-          UPDATE clubs 
-          SET name = $1, 
-              description = $2, 
+          UPDATE clubs
+          SET name = $1,
+              description = $2,
               type = $3
               ${logoPath ? ', logo = $4' : ''},
               updated_at = CURRENT_TIMESTAMP
           WHERE id = $${logoPath ? '5' : '4'} AND college_id = $${logoPath ? '6' : '5'}
       `;
 
-      const updateValues = logoPath 
+      const updateValues = logoPath
           ? [name, description, type, logoPath, clubId, req.user.college_id]
           : [name, description, type, clubId, req.user.college_id];
 
@@ -976,11 +976,11 @@ app.get("/club/:id", async (req, res) => {
 
     // Get upcoming events
     const eventsResult = await db.query(
-      `SELECT e.*, 
+      `SELECT e.*,
               TO_CHAR(e.date, 'Mon DD, YYYY') as "formattedDate",
               TO_CHAR(e.time, 'HH24:MI') as "formattedTime"
-       FROM events e 
-       WHERE e.club_id = $1 
+       FROM events e
+       WHERE e.club_id = $1
        AND e.date >= CURRENT_DATE
        ORDER BY e.date, e.time`,
       [clubId]
@@ -1046,10 +1046,10 @@ app.get("/college-admin", isCollegeAdmin, async (req, res) => {
     // Fetch events in the college
     const eventsResult = await db.query(
       `
-            SELECT e.*, c.name as club_name 
-            FROM events e 
-            JOIN clubs c ON e.club_id = c.id 
-            WHERE c.college_id = $1 
+            SELECT e.*, c.name as club_name
+            FROM events e
+            JOIN clubs c ON e.club_id = c.id
+            WHERE c.college_id = $1
             ORDER BY e.date DESC`,
       [req.user.college_id]
     );
@@ -1083,12 +1083,12 @@ app.get("/club-admin", isClubAdmin, async (req, res) => {
     // Fetch events for the club
     const eventsResult = await db.query(
       `
-            SELECT e.*, 
-                   COUNT(er.user_id) as registration_count 
-            FROM events e 
-            LEFT JOIN event_registrations er ON e.id = er.event_id 
-            WHERE e.club_id = $1 
-            GROUP BY e.id 
+            SELECT e.*,
+                   COUNT(er.user_id) as registration_count
+            FROM events e
+            LEFT JOIN event_registrations er ON e.id = er.event_id
+            WHERE e.club_id = $1
+            GROUP BY e.id
             ORDER BY e.date DESC`,
       [req.user.club_id]
     );
@@ -1195,11 +1195,11 @@ app.post("/event/new", isClubAdmin, async (req, res) => {
 
     const result = await db.query(
       `INSERT INTO events (
-                title, description, date, time, venue, 
-                role_tag, event_type, club_id, 
+                title, description, date, time, venue,
+                role_tag, event_type, club_id,
                 first_prize, second_prize, third_prize, faqs,
                 created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             RETURNING id`,
       [
         title,
@@ -1304,7 +1304,7 @@ app.get("/event/:id/registrations/download", isClubAdmin, async (req, res) => {
 
     // Get registrations
     const registrations = await db.query(
-      `SELECT 
+      `SELECT
                 u.name, u.email, u.phone, u.college,
                 er.created_at as registration_date
             FROM event_registrations er
@@ -1371,7 +1371,7 @@ app.get("/event/:id/registrations", isClubAdmin, async (req, res) => {
     );
 
     const registrationsResult = await db.query(
-      `SELECT 
+      `SELECT
          er.id as registration_id,
          er.created_at as registration_date,
          u.id as user_id,
@@ -1422,7 +1422,7 @@ app.get("/event/:id/edit", isClubAdmin, async (req, res) => {
     const eventId = parseInt(req.params.id);
     // Verify the event belongs to the admin's club
     const eventResult = await db.query(
-      `SELECT * FROM events 
+      `SELECT * FROM events
             WHERE id = $1 AND club_id = $2`,
       [eventId, req.user.club_id]
     );
@@ -1477,17 +1477,17 @@ app.post("/event/:id/edit", isClubAdmin, async (req, res) => {
 
     // Update the event
     const result = await db.query(
-      `UPDATE events 
-            SET title = $1, 
-                description = $2, 
-                date = $3, 
-                time = $4, 
-                venue = $5, 
-                role_tag = $6, 
-                event_type = $7, 
-                first_prize = $8, 
-                second_prize = $9, 
-                third_prize = $10, 
+      `UPDATE events
+            SET title = $1,
+                description = $2,
+                date = $3,
+                time = $4,
+                venue = $5,
+                role_tag = $6,
+                event_type = $7,
+                first_prize = $8,
+                second_prize = $9,
+                third_prize = $10,
                 faqs = $11
             WHERE id = $12 AND club_id = $13`,
       [
@@ -1525,20 +1525,20 @@ app.get("/event/:id", async (req, res) => {
 
   try {
     const eventResult = await db.query(
-      `SELECT 
+      `SELECT
         e.id,
-        e.title, 
-        e.description, 
-        e.date, 
-        e.time, 
-        e.venue, 
-        e.role_tag, 
+        e.title,
+        e.description,
+        e.date,
+        e.time,
+        e.venue,
+        e.role_tag,
         e.event_type,
         e.first_prize,
         e.second_prize,
         e.third_prize,
         e.faqs,
-        c.name AS club_name, 
+        c.name AS club_name,
         col.name AS college_name
       FROM events e
       JOIN clubs c ON e.club_id = c.id
@@ -1588,9 +1588,9 @@ app.delete('/college/:id', isSuperAdmin, async (req, res) => {
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
-        
+
         const collegeId = req.params.id;
-        
+
         // Delete related records first
         await client.query('DELETE FROM college_followers WHERE college_id = $1', [collegeId]);
         await client.query('DELETE FROM event_registrations WHERE event_id IN (SELECT e.id FROM events e JOIN clubs c ON e.club_id = c.id WHERE c.college_id = $1)', [collegeId]);
@@ -1599,7 +1599,7 @@ app.delete('/college/:id', isSuperAdmin, async (req, res) => {
         await client.query('DELETE FROM users WHERE college_id = $1 OR club_id IN (SELECT id FROM clubs WHERE college_id = $1)', [collegeId]);
         await client.query('DELETE FROM clubs WHERE college_id = $1', [collegeId]);
         await client.query('DELETE FROM colleges WHERE id = $1', [collegeId]);
-        
+
         await client.query('COMMIT');
         res.json({ success: true });
     } catch (error) {
@@ -1621,7 +1621,7 @@ app.get('/college/:id/edit', isSuperAdmin, async (req, res) => {
         );
 
         const adminResult = await db.query(
-            `SELECT * FROM users 
+            `SELECT * FROM users
              WHERE college_id = $1 AND role = 'college_admin'`,
             [collegeId]
         );
@@ -1648,21 +1648,21 @@ app.post('/college/:id/edit', isSuperAdmin, upload.single('logo'), async (req, r
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
-        
+
         const collegeId = req.params.id;
         const { name, location, admin_name, admin_email, admin_password } = req.body;
 
         // Update college details
         const updateQuery = `
-            UPDATE colleges 
-            SET name = $1, 
+            UPDATE colleges
+            SET name = $1,
                 location = $2
                 ${req.file ? ', logo = $3' : ''}
             WHERE id = $${req.file ? '4' : '3'}
             RETURNING *
         `;
 
-        const updateValues = req.file 
+        const updateValues = req.file
             ? [name, location, `/images/college_logos/${req.file.filename}`, collegeId]
             : [name, location, collegeId];
 
@@ -1678,8 +1678,8 @@ app.post('/college/:id/edit', isSuperAdmin, upload.single('logo'), async (req, r
             if (existingAdmin.rows[0]) {
                 // Update existing admin
                 const updateAdminQuery = `
-                    UPDATE users 
-                    SET name = $1, 
+                    UPDATE users
+                    SET name = $1,
                         email = $2
                         ${admin_password ? ', password_hash = $3' : ''}
                     WHERE college_id = $4 AND role = 'college_admin'
@@ -1700,7 +1700,7 @@ app.post('/college/:id/edit', isSuperAdmin, upload.single('logo'), async (req, r
                 );
             }
         }
-        
+
         await client.query('COMMIT');
         res.redirect('/super-admin');
     } catch (error) {
@@ -1725,20 +1725,20 @@ app.post('/college/:id/edit', isSuperAdmin, upload.single('logo'), async (req, r
 app.get('/colleges', async (req, res) => {
   try {
     const searchTerm = req.query.search || '';
-    
+
     const query = `
-      SELECT 
-        id, 
-        name, 
+      SELECT
+        id,
+        name,
         location
       FROM colleges
       WHERE LOWER(name) LIKE LOWER($1)
         OR LOWER(location) LIKE LOWER($1)
       ORDER BY name ASC
     `;
-    
+
     const result = await db.query(query, [`%${searchTerm}%`]);
-    
+
     res.render('pages/colleges', {
       colleges: result.rows,
       searchTerm: searchTerm,
