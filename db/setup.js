@@ -7,6 +7,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function setupDatabase() {
   try {
+    console.log('Starting database setup...');
+    
     // Read the schema file
     const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     
@@ -14,11 +16,17 @@ async function setupDatabase() {
     await db.query(schema);
     
     console.log('Database setup completed successfully');
-    process.exit(0);
   } catch (error) {
     console.error('Error setting up database:', error);
-    process.exit(1);
+    throw error;
   }
 }
 
-setupDatabase();
+// Only run setup if this file is being run directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  setupDatabase()
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+}
+
+export default setupDatabase;
