@@ -5,13 +5,10 @@ import { dirname } from "path";
 import path from "path";
 import db from "./db.js";
 import session from "express-session";
-import pgSession from "connect-pg-simple";
 import passport from "./config/auth.js";
 import authRoutes, { isAuthenticated } from "./routes/auth.js";
 import fs from "fs";
 import bcrypt from "bcrypt";
-
-const PostgresStore = pgSession(session);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -93,17 +90,13 @@ app.use(express.static('public'));
 
 app.use(
   session({
-    store: new PostgresStore({
-      pool: db.pool,
-      tableName: 'session'  // matches your schema
-    }),
     secret: process.env.SESSION_SECRET || "your-secret-key",
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      secure: process.env.NODE_ENV === 'production'
-    }
+    },
   })
 );
 
