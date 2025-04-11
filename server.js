@@ -1026,6 +1026,73 @@ app.post("/club/:id/follow", isAuthenticated, async (req, res) => {
   }
 });
 
+// Admin Login Routes
+app.get("/admin-login", (req, res) => {
+  res.render("pages/admin-login", { error: null });
+});
+
+app.post("/admin-login", async (req, res) => {
+  try {
+    const { email, password, admin_type } = req.body;
+
+    // Validate input
+    if (!email || !password || !admin_type) {
+      return res.render("pages/admin-login", {
+        error: "Please provide email, password, and admin type"
+      });
+    }
+
+    // Find user with matching email and role
+    const userResult = await db.query(
+      "SELECT * FROM users WHERE email = $1 AND role = $2",
+      [email, admin_type]
+    );
+
+    const user = userResult.rows[0];
+
+    // Check if user exists
+    if (!user) {
+      return res.render("pages/admin-login", {
+        error: "Invalid email or admin type"
+      });
+    }
+
+    // Verify password
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    if (!passwordMatch) {
+      return res.render("pages/admin-login", {
+        error: "Invalid password"
+      });
+    }
+
+    // Log the user in
+    req.login(user, (err) => {
+      if (err) {
+        console.error("Login error:", err);
+        return res.render("pages/admin-login", {
+          error: "An error occurred during login"
+        });
+      }
+
+      // Redirect based on admin type
+      if (admin_type === "super_admin") {
+        return res.redirect("/super-admin");
+      } else if (admin_type === "college_admin") {
+        return res.redirect("/college-admin");
+      } else if (admin_type === "club_admin") {
+        return res.redirect("/club-admin");
+      } else {
+        return res.redirect("/");
+      }
+    });
+  } catch (error) {
+    console.error("Admin login error:", error);
+    res.render("pages/admin-login", {
+      error: "An error occurred. Please try again."
+    });
+  }
+});
+
 
 
 // College Admin Routes
