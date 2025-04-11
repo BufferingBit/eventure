@@ -3,11 +3,13 @@ services:
     name: eventure
     env: node
     buildCommand: npm install && npm run build:css
-    startCommand: node server.js
+    startCommand: node db/setup.js && node server.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: SESSION_SECRET
         generateValue: true
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: eventure-db
+          property: connectionString
