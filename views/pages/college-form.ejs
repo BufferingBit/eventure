@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= mode === 'edit' ? 'Edit' : 'New' %> College | Eventure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <%- include('../partials/header') %>
+
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-2xl mx-auto">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h1 class="text-2xl font-bold mb-6"><%= mode === 'edit' ? 'Edit' : 'New' %> College</h1>
+
+                <% if (error) { %>
+                    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                        <%= error %>
+                    </div>
+                <% } %>
+
+                <form action="<%= mode === 'edit' ? `/college/${college.id}/edit` : '/college/new' %>" 
+                      method="POST" 
+                      enctype="multipart/form-data">
+                    
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">College Name</label>
+                        <input type="text" 
+                               name="name" 
+                               value="<%= college.name %>"
+                               required
+                               class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Location</label>
+                        <input type="text" 
+                               name="location" 
+                               value="<%= college.location %>"
+                               required
+                               class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">College Logo</label>
+                        <input type="file" 
+                               name="logo" 
+                               accept="image/*"
+                               class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        <% if (mode === 'edit' && college.logo) { %>
+                            <div class="mt-2">
+                                <img src="<%= college.logo %>" alt="Current logo" class="h-20 w-20 object-contain">
+                            </div>
+                        <% } %>
+                    </div>
+
+                    <hr class="my-8">
+
+                    <h2 class="text-xl font-bold mb-6">College Admin Details</h2>
+
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Admin Name</label>
+                        <input type="text" 
+                               name="admin_name" 
+                               value="<%= admin ? admin.name : '' %>"
+                               class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Admin Email</label>
+                        <input type="email" 
+                               name="admin_email" 
+                               value="<%= admin ? admin.email : '' %>"
+                               class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            Admin Password <%= mode === 'edit' ? '(leave blank to keep unchanged)' : '' %>
+                        </label>
+                        <input type="password" 
+                               name="admin_password"
+                               class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                               <%= mode === 'edit' ? '' : 'required' %>>
+                    </div>
+
+                    <div class="flex justify-end gap-4">
+                        <a href="/super-admin" 
+                           class="px-4 py-2 border rounded-lg hover:bg-gray-50">
+                            Cancel
+                        </a>
+                        <button type="submit" 
+                                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            <%= mode === 'edit' ? 'Update' : 'Create' %> College
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <%- include('../partials/footer') %>
+</body>
+</html>

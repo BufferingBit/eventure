@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= mode === 'create' ? 'Create New Club' : 'Edit Club' %></title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f9fafb;
+        }
+        .form-card {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .form-card:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .form-section {
+            border-bottom: 1px solid #e5e7eb;
+        }
+        input:focus, select:focus, textarea:focus {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+        .btn-primary {
+            transition: all 0.2s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <%- include('../partials/header') %>
+
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto bg-white p-8 rounded-xl form-card">
+        <div class="mb-8">
+            <h1 class="text-2xl font-bold text-gray-900">
+                <%= mode === 'create' ? 'Create New Club' : 'Edit Club' %>
+            </h1>
+            <p class="text-sm text-gray-500 mt-1">
+                <%= mode === 'create' ? 'Fill in the details to register a new club' : 'Update your club information' %>
+            </p>
+        </div>
+
+        <% if (error) { %>
+            <div class="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-red-700"><%= error %></p>
+                    </div>
+                </div>
+            </div>
+        <% } %>
+
+        <form action="<%= mode === 'create' ? '/club/new' : `/club/${club.id}/edit` %>" 
+              method="POST" 
+              enctype="multipart/form-data"
+              class="space-y-8">
+            
+            <!-- Club Details Section -->
+            <div class="form-section pb-8">
+                <div class="mb-6">
+                    <h2 class="text-lg font-semibold text-gray-900">Club Details</h2>
+                    <p class="text-sm text-gray-500 mt-1">Basic information about your club</p>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Club Name <span class="text-red-500">*</span></label>
+                        <input type="text" 
+                               name="name" 
+                               value="<%= club ? club.name : '' %>"
+                               required
+                               class="block w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Type <span class="text-red-500">*</span></label>
+                        <select name="type" 
+                                required
+                                class="block w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                            <option value="">Select Type</option>
+                            <option value="CLUB" <%= club && club.type === 'CLUB' ? 'selected' : '' %>>Club</option>
+                            <option value="SOCIETY" <%= club && club.type === 'SOCIETY' ? 'selected' : '' %>>Society</option>
+                            <option value="FEST" <%= club && club.type === 'FEST' ? 'selected' : '' %>>Fest</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                        <textarea name="description" 
+                                  rows="4"
+                                  class="block w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"><%= club ? club.description : '' %></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Club Logo</label>
+                        <div class="mt-1 flex items-center">
+                            <input type="file" 
+                                   name="logo" 
+                                   accept="image/*"
+                                   class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gray-50 file:text-gray-700 hover:file:bg-gray-100">
+                        </div>
+                        <% if (club && club.logo) { %>
+                            <div class="mt-3 flex items-center">
+                                <img src="<%= club.logo %>" alt="Current logo" class="h-16 w-16 object-contain rounded border border-gray-200">
+                                <span class="ml-3 text-sm text-gray-500">Current logo</span>
+                            </div>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Club Admin Section -->
+            <div class="pt-2">
+                <div class="mb-6">
+                    <h2 class="text-lg font-semibold text-gray-900">Club Admin Details</h2>
+                    <p class="text-sm text-gray-500 mt-1">Information about the club administrator</p>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Admin Name <span class="text-red-500">*</span></label>
+                        <input type="text" 
+                               name="adminName" 
+                               required
+                               class="block w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Admin Email <span class="text-red-500">*</span></label>
+                        <input type="email" 
+                               name="adminEmail" 
+                               required
+                               class="block w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Admin Password <span class="text-red-500">*</span></label>
+                        <input type="password" 
+                               name="adminPassword" 
+                               required
+                               minlength="8"
+                               class="block w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        <p class="mt-2 text-xs text-gray-500">Password must be at least 8 characters long</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Admin Phone</label>
+                        <input type="tel" 
+                               name="adminPhone" 
+                               class="block w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-6">
+                <a href="/college-admin" 
+                   class="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                    Cancel
+                </a>
+                <button type="submit"
+                        class="px-5 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 btn-primary">
+                    <%= mode === 'create' ? 'Create Club' : 'Update Club' %>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<%- include('../partials/footer') %>
+</body>
+</html>

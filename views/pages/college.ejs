@@ -5,183 +5,212 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title><%= college.name %> | Eventure</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
     .tab-btn {
-      background-color: #E5E7EB;
-      color: #4B5563;
+      transition: all 0.2s ease;
     }
-
     .tab-btn.active {
-      background-color: #1D4ED8;
-      color: white;
+      position: relative;
     }
-
-    .tab-content {
-      display: block;
+    .card-hover {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
-
-    .tab-content.hidden {
-      display: none;
+    .card-hover:hover {
+      transform: translateY(-2px);
+    }
+    .follow-btn {
+      transition: all 0.2s ease;
     }
   </style>
 </head>
-<body class="bg-white dark:bg-gray-100 text-gray-800 dark:text-black min-h-screen flex flex-col">
+<body class="bg-gray-50 text-gray-800 min-h-screen flex flex-col">
   <div class="flex-grow">
-  <%- include('../partials/header.ejs') %>
+    <%- include('../partials/header.ejs') %>
 
-  <!-- College Info -->
-  <div class="max-w-6xl mx-auto px-4 py-6 flex flex-col md:flex-row justify-between items-center md:items-start gap-8">
-    <div class="flex items-center gap-6">
-      <img src="/images/college_logos/<%= college.name.toLowerCase().replace(/\s/g, '_') %>.png"
-                                alt="<%= college.name %>" class="w-full h-32 object-contain mb-2"
-                                onerror="this.src='/images/college_logos/default-college-logo.png'" />
-      <div>
-        <h2 class="text-2xl font-bold whitespace-nowrap"><%= college.name %></h2>
-        <p class="text-gray-500"><%= college.location %></p>
-        <% if (user) { %>
-            <button
-                onclick="toggleFollow(<%= college.id %>)"
-                class="mt-3 px-5 py-2 rounded-full shadow-md text-sm follow-btn transition-all duration-300 ease-in-out
-                       <%= isFollowing ? 'bg-green-600 text-white' : 'bg-blue-600 text-white' %>"
-                data-following="<%= isFollowing %>"
-            >
-                <span class="flex items-center gap-2 ">
-                    <%= isFollowing ? '✓ Following' : 'Follow' %>
-                </span>
-            </button>
-        <% } else { %>
-            <a href="/login" class="mt-2 bg-blue-600 hover:bg-blue-700 block whitespace-nowrap text-white px-5 py-2 rounded-full shadow-md text-sm">
-                Login to Follow
-            </a>
-        <% } %>
+    <!-- College Info -->
+    <div class="max-w-7xl mx-auto px-6 py-8">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-8">
+          <div class="flex items-center gap-6">
+            <div class="w-24 h-24 flex-shrink-0 rounded-lg bg-gray-100 overflow-hidden border border-gray-200">
+              <img src="/images/college_logos/<%= college.name.toLowerCase().replace(/\s/g, '_') %>.png"
+                  alt="<%= college.name %>" class="w-full h-full object-contain"
+                  onerror="this.src='/images/college_logos/default-college-logo.png'" />
+            </div>
+            <div>
+              <h2 class="text-2xl font-bold text-gray-800"><%= college.name %></h2>
+              <p class="text-gray-500 mt-1"><%= college.location %></p>
+              <% if (user) { %>
+                <button
+                    onclick="toggleFollow(<%= college.id %>)"
+                    class="mt-3 px-5 py-2 rounded-full text-sm follow-btn shadow-sm
+                          <%= isFollowing ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700' %> text-white font-medium"
+                    data-following="<%= isFollowing %>"
+                >
+                    <span class="flex items-center gap-2">
+                        <%= isFollowing ? '✓ Following' : 'Follow' %>
+                    </span>
+                </button>
+              <% } else { %>
+                <a href="/login" class="mt-3 inline-block bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full shadow-sm text-sm font-medium">
+                    Login to Follow
+                </a>
+              <% } %>
+            </div>
+          </div>
+          <div class="flex gap-4">
+            <div class="bg-gradient-to-r from-indigo-300 to-indigo-500 rounded-xl px-6 py-4 text-center shadow-sm text-white min-w-[120px]">
+              <p class="text-sm font-medium">Clubs</p>
+              <p class="text-2xl font-bold mt-1"><%= clubCount %></p>
+            </div>
+            <div class="bg-gradient-to-r from-purple-300 to-purple-500 rounded-xl px-6 py-4 text-center shadow-sm text-white min-w-[120px]">
+              <p class="text-sm font-medium">Followers</p>
+              <p class="text-2xl font-bold mt-1"><%= followersCount %></p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="flex gap-6">
-      <div class="bg-gradient-to-r from-indigo-300 to-indigo-500 rounded-xl px-6 py-4 text-center shadow text-white min-w-[100px]">
-        <p class="text-sm font-medium">Clubs</p>
-        <p class="text-2xl font-bold"><%= clubCount %></p>
-      </div>
-      <div class="bg-gradient-to-r from-purple-300 to-purple-500 rounded-xl px-6 py-4 text-center shadow text-white min-w-[100px]">
-        <p class="text-sm font-medium">Followers</p>
-        <p class="text-2xl font-bold"><%= followersCount %></p>
+
+    <!-- Tabs -->
+    <div class="max-w-7xl mx-auto px-6 mb-6">
+      <div class="flex flex-wrap justify-center gap-2">
+        <button 
+          onclick="switchTab('events')" 
+          class="tab-btn px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
+          data-tab="events">
+          <span class="relative">Upcoming Events</span>
+        </button>
+        <button 
+          onclick="switchTab('clubs')" 
+          class="tab-btn px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
+          data-tab="clubs">
+          <span class="relative">Clubs</span>
+        </button>
+        <button 
+          onclick="switchTab('societies')" 
+          class="tab-btn px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
+          data-tab="societies">
+          <span class="relative">Societies</span>
+        </button>
+        <button 
+          onclick="switchTab('fests')" 
+          class="tab-btn px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
+          data-tab="fests">
+          <span class="relative">Fests</span>
+        </button>
       </div>
     </div>
-  </div>
 
-  <!-- Tabs -->
-  <div class="flex justify-center gap-4 mb-6">
-    <button 
-      onclick="switchTab('events')" 
-      class="tab-btn px-6 py-2 rounded-lg shadow font-medium transition-all duration-300"
-      data-tab="events">
-      Upcoming Events
-    </button>
-    <button 
-      onclick="switchTab('clubs')" 
-      class="tab-btn px-6 py-2 rounded-lg shadow font-medium transition-all duration-300"
-      data-tab="clubs">
-      Clubs
-    </button>
-    <button 
-      onclick="switchTab('societies')" 
-      class="tab-btn px-6 py-2 rounded-lg shadow font-medium transition-all duration-300"
-      data-tab="societies">
-      Societies
-    </button>
-    <button 
-      onclick="switchTab('fests')" 
-      class="tab-btn px-6 py-2 rounded-lg shadow font-medium transition-all duration-300"
-      data-tab="fests">
-      Fests
-    </button>
-  </div>
-
-  <!-- Content Sections -->
-  <div class="max-w-6xl mx-auto px-4 mb-16">
-    <!-- Events Section -->
-    <div id="events-section" class="tab-content">
-      <h2 class="text-xl font-semibold mb-4">Upcoming Events</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-        <% events.forEach(event => { %>
-          <a href="/event/<%= event.id %>" class="block">
-            <div class="bg-white rounded-xl shadow hover:shadow-md transition overflow-hidden">
-              <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg" 
-                  alt="<%= event.title %>" 
-                  class="w-full h-40 object-cover" 
-                  onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
-              <div class="p-4">
-                <h3 class="text-lg font-semibold truncate"><%= event.title %></h3>
-                <p class="text-sm text-gray-600 truncate"><%= event.club_name %></p>
-                <p class="text-sm font-medium mt-2">📅 <%= event.formattedDate %></p>
-                <p class="text-sm font-medium">⏰ <%= event.formattedTime %></p>
+    <!-- Content Sections -->
+    <div class="max-w-7xl mx-auto px-6 mb-12">
+      <!-- Events Section -->
+      <div id="events-section" class="tab-content">
+        <h2 class="text-xl font-semibold text-gray-800 mb-5">Upcoming Events</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+          <% events.forEach(event => { %>
+            <a href="/event/<%= event.id %>" class="block">
+              <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden card-hover">
+                <div class="h-40 bg-gray-100 overflow-hidden">
+                  <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg" 
+                      alt="<%= event.title %>" 
+                      class="w-full h-full object-cover" 
+                      onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
+                </div>
+                <div class="p-4">
+                  <h3 class="text-base font-semibold text-gray-800 truncate"><%= event.title %></h3>
+                  <p class="text-sm text-gray-500 mt-1 truncate"><%= event.club_name %></p>
+                  <div class="mt-3 space-y-1">
+                    <p class="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <%= event.formattedDate %>
+                    </p>
+                    <p class="text-xs font-medium text-gray-600 flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <%= event.formattedTime %>
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </a>
-        <% }) %>
+            </a>
+          <% }) %>
+        </div>
       </div>
-    </div>
 
-    <!-- Clubs Section -->
-    <div id="clubs-section" class="tab-content hidden">
-      <h2 class="text-xl font-semibold mb-4">Clubs</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        <% clubs.CLUB.forEach(club => { %>
-          <a href="/club/<%= club.id %>" class="block">
-            <div class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition-shadow">
-              <img src="/images/club_logos/<%= club.logo %>" 
-                   alt="<%= club.name %>" 
-                   class="w-full h-32 object-contain mb-4"
-                   onerror="this.src='/images/club_logos/default_club_logo.png'" />
-              <h3 class="text-lg font-semibold mb-2"><%= club.name %></h3>
-              <p class="text-sm text-gray-600"><%= club.description || 'No description available' %></p>
-            </div>
-          </a>
-        <% }) %>
+      <!-- Clubs Section -->
+      <div id="clubs-section" class="tab-content hidden">
+        <h2 class="text-xl font-semibold text-gray-800 mb-5">Clubs</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+          <% clubs.CLUB.forEach(club => { %>
+            <a href="/club/<%= club.id %>" class="block">
+              <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 card-hover">
+                <div class="h-32 bg-gray-50 rounded-md mb-4 flex items-center justify-center">
+                  <img src="/images/club_logos/<%= club.logo %>" 
+                      alt="<%= club.name %>" 
+                      class="h-full object-contain p-2"
+                      onerror="this.src='/images/club_logos/default_club_logo.png'" />
+                </div>
+                <h3 class="text-base font-semibold text-gray-800 mb-1"><%= club.name %></h3>
+                <p class="text-xs text-gray-500 line-clamp-2"><%= club.description || 'No description available' %></p>
+              </div>
+            </a>
+          <% }) %>
+        </div>
       </div>
-    </div>
 
-    <!-- Societies Section -->
-    <div id="societies-section" class="tab-content hidden">
-      <h2 class="text-xl font-semibold mb-4">Societies</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        <% clubs.SOCIETY.forEach(society => { %>
-          <a href="/club/<%= society.id %>" class="block">
-            <div class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition-shadow">
-              <img src="/images/society_logos/society_default_logo.png" 
-                   alt="<%= society.name %>" 
-                   class="w-full h-32 object-contain mb-4"
-                   onerror="this.src='/images/club_logos/default-club-logo.png'" />
-              <h3 class="text-lg font-semibold mb-2"><%= society.name %></h3>
-              <p class="text-sm text-gray-600"><%= society.description || 'No description available' %></p>
-            </div>
-          </a>
-        <% }) %>
+      <!-- Societies Section -->
+      <div id="societies-section" class="tab-content hidden">
+        <h2 class="text-xl font-semibold text-gray-800 mb-5">Societies</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+          <% clubs.SOCIETY.forEach(society => { %>
+            <a href="/club/<%= society.id %>" class="block">
+              <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 card-hover">
+                <div class="h-32 bg-gray-50 rounded-md mb-4 flex items-center justify-center">
+                  <img src="/images/society_logos/society_default_logo.png" 
+                      alt="<%= society.name %>" 
+                      class="h-full object-contain p-2"
+                      onerror="this.src='/images/club_logos/default-club-logo.png'" />
+                </div>
+                <h3 class="text-base font-semibold text-gray-800 mb-1"><%= society.name %></h3>
+                <p class="text-xs text-gray-500 line-clamp-2"><%= society.description || 'No description available' %></p>
+              </div>
+            </a>
+          <% }) %>
+        </div>
       </div>
-    </div>
 
-    <!-- Fests Section -->
-    <div id="fests-section" class="tab-content hidden">
-      <h2 class="text-xl font-semibold mb-4">Fests</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        <% clubs.FEST.forEach(fest => { %>
-          <a href="/club/<%= fest.id %>" class="block">
-            <div class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition-shadow">
-              <img src="/images/fest_logos/fest_default_logo.jpg" 
-                   alt="<%= fest.name %>" 
-                   class="w-full h-32 object-contain mb-4"
-                   onerror="this.src='/images/club_logos/default-club-logo.png'" />
-              <h3 class="text-lg font-semibold mb-2"><%= fest.name %></h3>
-              <p class="text-sm text-gray-600"><%= fest.description || 'No description available' %></p>
-            </div>
-          </a>
-        <% }) %>
+      <!-- Fests Section -->
+      <div id="fests-section" class="tab-content hidden">
+        <h2 class="text-xl font-semibold text-gray-800 mb-5">Fests</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+          <% clubs.FEST.forEach(fest => { %>
+            <a href="/club/<%= fest.id %>" class="block">
+              <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 card-hover">
+                <div class="h-32 bg-gray-50 rounded-md mb-4 flex items-center justify-center">
+                  <img src="/images/fest_logos/fest_default_logo.jpg" 
+                      alt="<%= fest.name %>" 
+                      class="h-full object-contain p-2"
+                      onerror="this.src='/images/club_logos/default-club-logo.png'" />
+                </div>
+                <h3 class="text-base font-semibold text-gray-800 mb-1"><%= fest.name %></h3>
+                <p class="text-xs text-gray-500 line-clamp-2"><%= fest.description || 'No description available' %></p>
+              </div>
+            </a>
+          <% }) %>
+        </div>
       </div>
     </div>
   </div>
-</div>
+  
   <%- include('../partials/footer.ejs') %>
-
-
 
   <script>
     function switchTab(tabName) {
@@ -198,18 +227,19 @@
       
       // Update tab button styles
       document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
+        btn.classList.remove('active', 'bg-blue-600', 'text-white');
+        btn.classList.add('text-gray-500', 'hover:text-gray-700');
       });
       
       const selectedTab = document.querySelector(`[data-tab="${tabName}"]`);
       if (selectedTab) {
-        selectedTab.classList.add('active');
+        selectedTab.classList.add('active', 'bg-blue-600', 'text-white');
+        selectedTab.classList.remove('text-gray-500', 'hover:text-gray-700');
       }
     }
     
     // Initialize the first tab as active when the page loads
     document.addEventListener('DOMContentLoaded', () => {
-      // Set initial active tab
       switchTab('events');
     });
     
@@ -237,12 +267,12 @@
                 }, 100);
     
                 if (isFollowing) {
-                    btn.classList.remove('bg-green-600');
-                    btn.classList.add('bg-blue-600');
+                    btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
                     btn.querySelector('span').innerHTML = 'Follow';
                 } else {
-                    btn.classList.remove('bg-blue-600');
-                    btn.classList.add('bg-green-600');
+                    btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                    btn.classList.add('bg-green-600', 'hover:bg-green-700');
                     btn.querySelector('span').innerHTML = '✓ Following';
                 }
             }
@@ -251,8 +281,13 @@
             alert('Failed to update follow status');
         }
     }
-    </script>
+  </script>
+
+  <style>
+    .tab-btn.active span:after {
+      content: '';
+      @apply absolute left-0 bottom-0 w-full h-0.5 bg-white opacity-50 rounded-full;
+    }
+  </style>
 </body>
 </html>
-
-

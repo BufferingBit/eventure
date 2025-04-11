@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles */
+.gradient-side {
+    background: linear-gradient(135deg, #312e81 0%, #3b82f6 100%);
+}
+
+.input-field {
+    transition: all 0.2s ease;
+}
+
+.input-field:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover:hover {
+    transform: translateY(-2px);
+}
+
+.follow-btn {
+    transition: all 0.2s ease;
+}
+
+.tab-btn {
+    transition: all 0.2s ease;
+}
+
+.tab-btn.active {
+    position: relative;
+}
+
+/* Add any other custom styles from your EJS files here */

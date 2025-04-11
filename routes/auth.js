@@ -15,8 +15,8 @@ router.post('/login', async (req, res) => {
     
     try {
         const result = await db.query(
-            'SELECT * FROM users WHERE email = $1',
-            [email]
+            'SELECT * FROM users WHERE email = $1 AND role = $2',
+            [email, 'user']  // Only allow regular user logins through this route
         );
 
         const user = result.rows[0];
@@ -86,75 +86,84 @@ router.get('/signup', (req, res) => {
 
 
 router.post('/signup', async (req, res) => {
-    const { name, email, password, isAdmin } = req.body;
-    
     try {
-        const existingUser = await db.query(
+        const { name, email, password } = req.body;
+        
+        // Check if user already exists
+        const userExists = await db.query(
             'SELECT * FROM users WHERE email = $1',
             [email]
         );
 
-        if (existingUser.rows.length > 0) {
-            return res.redirect('/signup?error=Email already exists');
+        if (userExists.rows.length > 0) {
+            return res.redirect('/signup?error=Email already registered');
         }
 
-        const saltRounds = 10;
-        const passwordHash = await bcrypt.hash(password, saltRounds);
-
-        const result = await db.query(
-            `INSERT INTO users (
-                name, 
-                email, 
-                password_hash, 
-                role
-            ) VALUES ($1, $2, $3, $4) 
-            RETURNING *`,
-            [
-                name, 
-                email, 
-                passwordHash, 
-                isAdmin === 'on' ? 'admin' : 'user'
-            ]
+        // Create new user with 'user' role only
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await db.query(
+            'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4)',
+            [name, email, hashedPassword, 'user']
         );
 
-        const newUser = result.rows[0];
+        res.redirect('/login?message=Registration successful');
+    } catch (error) {
+        console.error(error);
+        res.redirect('/signup?error=Registration failed');
+    }
+});
 
+// Admin login page
+router.get('/admin-login', (req, res) => {
+    const { error } = req.query;
+    res.render('pages/admin-login', { error });
+});
 
-        req.login(newUser, (err) => {
+// Admin login handler
+router.post('/admin-login', async (req, res) => {
+    try {
+        const { email, password, admin_type } = req.body;
+
+        // Verify that the user exists and has the correct role
+        const result = await db.query(
+            'SELECT * FROM users WHERE email = $1 AND role = $2',
+            [email, admin_type]
+        );
+
+        const user = result.rows[0];
+
+        if (!user) {
+            return res.redirect('/admin-login?error=Invalid credentials');
+        }
+
+        const isValidPassword = await bcrypt.compare(password, user.password_hash);
+
+        if (!isValidPassword) {
+            return res.redirect('/admin-login?error=Invalid credentials');
+        }
+
+        req.login(user, (err) => {
             if (err) {
-                console.error('Auto-login error:', err);
-                return res.redirect('/login?error=Please log in manually');
+                console.error(err);
+                return res.redirect('/admin-login?error=Login failed');
             }
 
-
-            req.session.regenerate((err) => {
-                if (err) {
-                    console.error('Session regeneration error:', err);
-                    return res.redirect('/login?error=Please log in manually');
-                }
-
-
-                req.session.user = {
-                    id: newUser.id,
-                    name: newUser.name,
-                    email: newUser.email,
-                    role: newUser.role
-                };
-
-                req.session.save((err) => {
-                    if (err) {
-                        console.error('Session save error:', err);
-                        return res.redirect('/login?error=Please log in manually');
-                    }
-
-                    res.redirect('/');
-                });
-            });
+            // Redirect based on admin role
+            switch(user.role) {
+                case 'super_admin':
+                    return res.redirect('/super-admin');
+                case 'college_admin':
+                    return res.redirect('/college-admin');
+                case 'club_admin':
+                    return res.redirect('/club-admin');
+                default:
+                    return res.redirect('/');
+            }
         });
 
     } catch (error) {
-        console.error('Signup error:', error);
-        res.redirect('/signup?error=Signup failed. Please try again.');
+        console.error(error);
+        res.redirect('/admin-login?error=Login failed');
     }
 });
 
@@ -166,6 +175,10 @@ export const isAuthenticated = (req, res, next) => {
 };
 
 export default router;
+
+
+
+
 
 
 

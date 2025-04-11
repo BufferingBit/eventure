@@ -59,8 +59,13 @@
             </div>
 
             <% if (user) { %>
-              <button onclick="registerForEvent()" class="bg-blue-600 text-white font-semibold px-6 py-2 rounded-lg hover:bg-blue-700 transition-all duration-200">
-                Register
+              <button 
+                onclick="registerForEvent()" 
+                id="registerButton"
+                class="<%= isRegistered ? 'bg-green-600' : 'bg-blue-600' %> text-white font-semibold px-6 py-2 rounded-lg hover:opacity-90 transition-all duration-200 flex items-center gap-2"
+                <%= isRegistered ? 'disabled' : '' %>
+              >
+                <span id="buttonText"><%= isRegistered ? '✓ Registered' : 'Register' %></span>
               </button>
             <% } else { %>
               <a href="/auth/google" class="bg-blue-600 text-white font-semibold px-6 py-2 rounded-lg hover:bg-blue-700 transition-all duration-200">
@@ -196,6 +201,12 @@
   </script>
   <script>
     async function registerForEvent() {
+      const button = document.getElementById('registerButton');
+      const buttonText = document.getElementById('buttonText');
+      
+      // Disable button during registration
+      button.disabled = true;
+      
       try {
         const response = await fetch('/event/<%= event.id %>/register', {
           method: 'POST',
@@ -206,15 +217,35 @@
 
         const data = await response.json();
         if (data.success) {
-          alert('Successfully registered for the event!');
+          // Update button appearance
+          button.classList.remove('bg-blue-600');
+          button.classList.add('bg-green-600');
+          buttonText.innerHTML = '✓ Registered';
+          
+          // Add subtle animation
+          button.style.transform = 'scale(0.95)';
+          setTimeout(() => {
+            button.style.transform = 'scale(1)';
+          }, 100);
         } else {
+          // Re-enable button if registration failed
+          button.disabled = false;
           alert(data.message || 'Registration failed. Please try again.');
         }
       } catch (error) {
         console.error('Error:', error);
+        button.disabled = false;
         alert('Registration failed. Please try again.');
       }
     }
+
+    // Initialize button state based on registration status
+    document.addEventListener('DOMContentLoaded', () => {
+      const button = document.getElementById('registerButton');
+      if (button && <%= isRegistered %>) {
+        button.disabled = true;
+      }
+    });
   </script>
 </body>
 </html>

@@ -1,54 +1,104 @@
-import express from 'express';
-import multer from 'multer';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import path from 'path';
-import db from './db.js';
-import session from 'express-session';
-import passport from './config/auth.js';
-import authRoutes, { isAuthenticated } from './routes/auth.js';
-import fs from 'fs';
+import express from "express";
+import multer from "multer";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+import path from "path";
+import db from "./db.js";
+import session from "express-session";
+import passport from "./config/auth.js";
+import authRoutes, { isAuthenticated } from "./routes/auth.js";
+import fs from "fs";
+import bcrypt from "bcrypt";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const app = express();
+const port = process.env.PORT || 3000;
+
 
 // Create uploads directory if it doesn't exist
-const uploadDir = path.join(__dirname, 'public/images/profile_photos');
-if (!fs.existsSync(uploadDir)){
-    fs.mkdirSync(uploadDir, { recursive: true });
+const uploadDir = path.join(__dirname, "public/images/profile_photos");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-    destination: function(req, file, cb) {
-        cb(null, path.join(__dirname, 'public/images/profile_photos'))
-    },
-    filename: function(req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + '-' + file.originalname);
-    }
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, "public/images/profile_photos"));
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + "-" + file.originalname);
+  },
 });
+
+// Admin middleware
+const isCollegeAdmin = (req, res, next) => {
+  if (req.isAuthenticated() && req.user.role === "college_admin") {
+    return next();
+  }
+  res.redirect("/login");
+};
+
+const isClubAdmin = async (req, res, next) => {
+  if (!req.isAuthenticated() || req.user.role !== "club_admin") {
+    return res.redirect("/login");
+  }
+
+  try {
+    const result = await db.query(
+      "SELECT club_id FROM users WHERE id = $1 AND role = $2",
+      [req.user.id, "club_admin"]
+    );
+
+    const clubId = result.rows[0]?.club_id;
+
+    // Ensure clubId is present and is an integer
+    if (!clubId || isNaN(clubId)) {
+      console.error("Invalid or missing club_id for user:", req.user.id);
+      return res.redirect("/login");
+    }
+
+    req.user.club_id = Number(clubId); 
+    return next();
+  } catch (error) {
+    console.error("Error in club admin middleware:", error);
+    return res.status(500).send("Server error");
+  }
+};
+
+// Super Admin middleware
+const isSuperAdmin = (req, res, next) => {
+  if (req.isAuthenticated() && req.user.role === 'super_admin') {
+      return next();
+  }
+  res.redirect('/login');
+};
+
+
+
 
 const upload = multer({ storage: storage });
 
-const app = express();
-const port = 3000;
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static('public'));
 
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key',
-  resave: false,
-  saveUninitialized: false,
-  rolling: true,
-  cookie: {
-    maxAge: 7 * 24 * 60 * 60 * 1000 
-  }
-}));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "your-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    rolling: true,
+    cookie: {
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    },
+  })
+);
 
 app.use(passport.initialize());
 app.use(passport.session());
@@ -56,12 +106,12 @@ app.use(passport.session());
 app.use((req, res, next) => {
   if (req.isAuthenticated()) {
     const durations = {
-      user: 7 * 24 * 60 * 60 * 1000,         
-      club_admin: 3 * 24 * 60 * 60 * 1000,   
-      college_admin: 1 * 24 * 60 * 60 * 1000 
+      user: 7 * 24 * 60 * 60 * 1000,
+      club_admin: 3 * 24 * 60 * 60 * 1000,
+      college_admin: 1 * 24 * 60 * 60 * 1000,
     };
 
-    const role = req.user.role || 'user'; 
+    const role = req.user.role || "user";
     const duration = durations[role] || durations.user;
 
     req.session.cookie.maxAge = duration;
@@ -69,13 +119,12 @@ app.use((req, res, next) => {
   next();
 });
 
-
 app.use((req, res, next) => {
   res.locals.user = req.user;
   next();
 });
 
-app.use('/', authRoutes);
+app.use("/", authRoutes);
 
 function formatDate(dateStr) {
   try {
@@ -104,57 +153,238 @@ function formatTime(timeStr) {
   }
 }
 
-app.get("/", async (req, res) => {
+app.get('/', async (req, res) => {
   try {
-    const searchTerm = req.query.search || "";
+    const searchTerm = req.query.search || '';
+    const filter = req.query.filter || 'all';
 
-    let query = `
+    const collegesQuery = `
+      SELECT id, name, location 
+      FROM colleges 
+      WHERE LOWER(name) LIKE LOWER($1)
+      ORDER BY name`;
+    const collegesResult = await db.query(collegesQuery, [`%${searchTerm}%`]);
+
+    let eventsQuery = `
       SELECT 
         e.id, 
         e.title, 
         e.description, 
         e.date, 
-        e.time, 
-        e.venue, 
-        e.role_tag, 
-        e.event_type,
-        c.name AS club_name, 
-        col.name AS college_name
+        e.time,
+        e.venue,
+        c.name AS college_name
       FROM events e
-      JOIN clubs c ON e.club_id = c.id
-      JOIN colleges col ON c.college_id = col.id
-    `;
+      JOIN clubs cl ON e.club_id = cl.id
+      JOIN colleges c ON cl.college_id = c.id
+      WHERE e.date >= CURRENT_DATE`;
 
-    let values = [];
 
-    if (searchTerm) {
-      query += `
-        WHERE col.name ILIKE $1 
-           OR c.name ILIKE $1
-           OR col.name ILIKE $2
-           OR c.name ILIKE $2
-      `;
-      values.push(`%${searchTerm}%`);
-      values.push(`%${searchTerm.split(" ").join("%")}%`);
+    if (filter === 'this-week') {
+      eventsQuery += ` AND e.date <= CURRENT_DATE + INTERVAL '7 days'`;
     }
 
-    const response = await db.query(query, values);
-    const events = response.rows.map((event) => ({
+    // Add search condition if search term exists
+    if (searchTerm) {
+      eventsQuery += ` AND (
+        LOWER(e.title) LIKE LOWER($1) OR 
+        LOWER(c.name) LIKE LOWER($1)
+      )`;
+    }
+
+    eventsQuery += ` ORDER BY e.date ASC, e.time ASC`;
+
+    // Execute events query
+    const eventsResult = await db.query(
+      eventsQuery,
+      searchTerm ? [`%${searchTerm}%`] : []
+    );
+
+    // Format dates and times
+    const events = eventsResult.rows.map(event => ({
       ...event,
       formattedDate: formatDate(event.date),
-      formattedTime: formatTime(event.time),
+      formattedTime: formatTime(event.time)
     }));
 
-    const collegeRes = await db.query("SELECT id, name FROM colleges");
-    const colleges = collegeRes.rows;
-
-    res.render("index", { events, colleges, searchTerm });
+    res.render('index', {
+      colleges: collegesResult.rows,
+      events: events,
+      searchTerm: searchTerm,
+      filter: filter,
+      user: req.user
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).send("Internal Server Error");
+    console.error('Error fetching data:', error);
+    res.status(500).render('error', { 
+      message: 'Failed to load homepage',
+      error: error
+    });
   }
 });
 
+
+// Super Admin Routes
+app.get('/super-admin', isSuperAdmin, async (req, res) => {
+    try {
+        const searchTerm = req.query.search || '';
+        const searchQuery = `%${searchTerm}%`;
+
+        const collegesResult = await db.query(
+            `SELECT c.*, u.name as admin_name, u.email as admin_email 
+             FROM colleges c 
+             LEFT JOIN users u ON u.college_id = c.id AND u.role = 'college_admin'
+             WHERE LOWER(c.name) LIKE LOWER($1) OR LOWER(c.location) LIKE LOWER($1)
+             ORDER BY c.name ASC`,
+            [searchQuery]
+        );
+
+        res.render('pages/super-admin', {
+            user: req.user,
+            colleges: collegesResult.rows,
+            error: null,
+            searchTerm
+        });
+    } catch (error) {
+        console.error('Error loading super admin dashboard:', error);
+        res.status(500).send("Server error");
+    }
+});
+
+app.get('/college/new', isSuperAdmin, (req, res) => {
+  res.render('pages/college-form', {
+      user: req.user,
+      college: {},
+      admin: null,
+      mode: 'create',
+      error: null,
+      searchTerm: ''
+  });
+});
+
+app.post('/college/new', isSuperAdmin, upload.single('logo'), async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+      await client.query('BEGIN');
+      
+      const { name, location, admin_name, admin_email, admin_password } = req.body;
+
+      const collegeResult = await client.query(
+          `INSERT INTO colleges (name, location, logo) 
+           VALUES ($1, $2, $3) 
+           RETURNING id`,
+          [
+              name, 
+              location, 
+              req.file ? `/images/college_logos/${req.file.filename}` : '/images/college_logos/default-college-logo.png'
+          ]
+      );
+
+      const collegeId = collegeResult.rows[0].id;
+
+      // Create admin if details provided
+      if (admin_email && admin_name && admin_password) {
+          const hashedPassword = await bcrypt.hash(admin_password, 10);
+          await client.query(
+              `INSERT INTO users (name, email, password_hash, role, college_id)
+               VALUES ($1, $2, $3, $4, $5)`,
+              [admin_name, admin_email, hashedPassword, 'college_admin', collegeId]
+          );
+      }
+
+      await client.query('COMMIT');
+      res.redirect('/super-admin');
+  } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error creating college:', error);
+      res.render('pages/college-form', {
+          user: req.user,
+          college: req.body,
+          admin: {
+              name: req.body.admin_name,
+              email: req.body.admin_email
+          },
+          mode: 'create',
+          error: 'Failed to create college: ' + error.message,
+          searchTerm: ''
+      });
+  } finally {
+      client.release();
+  }
+});
+
+app.get('/college-admin/new', isSuperAdmin, async (req, res) => {
+  try {
+      const collegesResult = await db.query(
+          'SELECT * FROM colleges ORDER BY name'
+      );
+
+      res.render('pages/college-admin-form', {
+          user: req.user,
+          colleges: collegesResult.rows,  
+          error: null,
+          mode: 'create',
+          searchTerm: req.query.search || ''
+      });
+  } catch (error) {
+      console.error('Error loading college admin form:', error);
+      res.status(500).send('Server error');
+  }
+});
+
+app.post('/college-admin/new', isSuperAdmin, async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+      await client.query('BEGIN');
+      
+      const { name, email, password, college_id } = req.body;
+
+      // Basic validation
+      if (!name || !email || !password || !college_id) {
+          const collegesResult = await db.query('SELECT * FROM colleges ORDER BY name');
+          return res.render('pages/college-admin-form', {
+              user: req.user,
+              colleges: collegesResult.rows,
+              error: 'Please fill in all required fields',
+              mode: 'create',
+              searchTerm: ''
+          });
+      }
+
+      // Check if email already exists
+      const existingUser = await client.query(
+          'SELECT * FROM users WHERE email = $1',
+          [email]
+      );
+
+      if (existingUser.rows[0]) {
+          const collegesResult = await db.query('SELECT * FROM colleges ORDER BY name');
+          return res.render('pages/college-admin-form', {
+              user: req.user,
+              colleges: collegesResult.rows,
+              error: 'Email already exists',
+              mode: 'create',
+              searchTerm: ''
+          });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await client.query(
+          `INSERT INTO users (name, email, password_hash, role, college_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [name, email, hashedPassword, 'college_admin', college_id]
+      );
+
+      await client.query('COMMIT');
+      res.redirect('/super-admin');
+  } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error creating college admin:', error);
+      res.redirect('/college-admin/new?error=Failed to create college admin');
+  } finally {
+      client.release();
+  }
+});
 
 app.get("/college/:id", async (req, res) => {
   try {
@@ -165,14 +395,15 @@ app.get("/college/:id", async (req, res) => {
     let isFollowing = false;
     if (userId) {
       const followResult = await db.query(
-        'SELECT EXISTS(SELECT 1 FROM college_followers WHERE user_id = $1 AND college_id = $2)',
+        "SELECT EXISTS(SELECT 1 FROM college_followers WHERE user_id = $1 AND college_id = $2)",
         [userId, collegeId]
       );
       isFollowing = followResult.rows[0].exists;
     }
 
     const collegeResult = await db.query(
-      "SELECT id, name, location, logo FROM colleges WHERE id = $1", [collegeId]
+      "SELECT id, name, location, logo FROM colleges WHERE id = $1",
+      [collegeId]
     );
     const college = collegeResult.rows[0];
 
@@ -182,13 +413,12 @@ app.get("/college/:id", async (req, res) => {
 
     // Get followers count
     const followersCountResult = await db.query(
-      'SELECT COUNT(*) FROM college_followers WHERE college_id = $1',
+      "SELECT COUNT(*) FROM college_followers WHERE college_id = $1",
       [collegeId]
     );
     const followersCount = parseInt(followersCountResult.rows[0].count);
     console.log("followersCount:", followersCount);
 
-    // Fetch clubs grouped by type
     const clubsResult = await db.query(
       `SELECT id, name, type, description, logo 
        FROM clubs 
@@ -196,15 +426,28 @@ app.get("/college/:id", async (req, res) => {
       [collegeId]
     );
 
-    // Group clubs by type
+    // Log the raw results for debugging
+    console.log("Raw clubs data:", clubsResult.rows);
+
+    // Normalize the type field and group clubs
     const clubs = {
-      CLUB: clubsResult.rows.filter(club => club.type.toUpperCase() === 'CLUB'),
-      SOCIETY: clubsResult.rows.filter(club => club.type.toUpperCase() === 'SOCIETY'),
-      FEST: clubsResult.rows.filter(club => club.type.toUpperCase() === 'FEST')
+      CLUB: clubsResult.rows.filter(
+        (club) => club.type?.toString().toUpperCase().trim() === "CLUB"
+      ),
+      SOCIETY: clubsResult.rows.filter(
+        (club) => club.type?.toString().toUpperCase().trim() === "SOCIETY"
+      ),
+      FEST: clubsResult.rows.filter(
+        (club) => club.type?.toString().toUpperCase().trim() === "FEST"
+      ),
     };
 
+    // Log the grouped results for debugging
+    console.log("Grouped clubs:", clubs);
+
     // Fetch upcoming events
-    const eventsResult = await db.query(`
+    const eventsResult = await db.query(
+      `
       SELECT 
         e.id, 
         e.title, 
@@ -222,7 +465,9 @@ app.get("/college/:id", async (req, res) => {
       JOIN colleges col ON c.college_id = col.id
       WHERE col.id = $1 AND e.date >= CURRENT_DATE
       ORDER BY e.date ASC
-    `, [collegeId]);
+    `,
+      [collegeId]
+    );
 
     const events = eventsResult.rows.map((event) => ({
       ...event,
@@ -238,90 +483,12 @@ app.get("/college/:id", async (req, res) => {
       clubCount: clubsResult.rows.length,
       followersCount,
       isFollowing,
-      activeTab: 'events',
-      user: req.user
+      activeTab: "events",
+      user: req.user,
     });
   } catch (err) {
     console.error(err);
     res.status(500).send("Server error");
-  }
-});
-
-
-app.get("/event/:id", async (req, res) => {
-  const eventId = req.params.id;
-  const searchTerm = req.query.search || '';
-
-  try {
-    const eventResult = await db.query(
-      `
-      SELECT 
-        e.id,
-        e.title, 
-        e.description, 
-        e.date, 
-        e.time, 
-        e.venue, 
-        e.role_tag, 
-        e.event_type,
-        e.first_prize,
-        e.second_prize,
-        e.third_prize,
-        e.faqs,
-        c.name AS club_name, 
-        col.name AS college_name
-      FROM events e
-      JOIN clubs c ON e.club_id = c.id
-      JOIN colleges col ON c.college_id = col.id
-      WHERE e.id = $1
-    `,
-      [eventId]
-    );
-
-    if (!eventResult.rows[0]) {
-      return res.status(404).send("Event not found");
-    }
-
-    const event = eventResult.rows[0];
-    const formattedEvent = {
-      ...event,
-      name: event.title, 
-      formattedDate: formatDate(event.date),
-      formattedTime: formatTime(event.time),
-    };
-    // Debugging log removed
-    // console.log(formattedEvent);
-    res.render("pages/event.ejs", { 
-      event: formattedEvent,
-      searchTerm 
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server error");
-  }
-});
-
-
-app.post('/event/:id/register', isAuthenticated, async (req, res) => {
-  try {
-    const eventId = req.params.id;
-    const userId = req.user.id;
-
-    await db.query(
-      'INSERT INTO event_registrations (user_id, event_id) VALUES ($1, $2)',
-      [userId, eventId]
-    );
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error(error);
-
-    // PostgreSQL error code for unique violation: 23505
-    if (error.code === '23505') {
-      return res.json({ success: false, message: 'Already registered' });
-    }
-
-    res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
 
@@ -329,26 +496,32 @@ app.post('/event/:id/register', isAuthenticated, async (req, res) => {
 app.get("/profile", isAuthenticated, async (req, res) => {
   try {
     const userId = req.user.id;
-    const userResult = await db.query(`
+    const userResult = await db.query(
+      `
       SELECT 
         u.*,
         c.name as college_name
       FROM users u
       LEFT JOIN colleges c ON u.college_id = c.id
       WHERE u.id = $1
-    `, [userId]);
+    `,
+      [userId]
+    );
 
     // Get followed colleges
-    const followedCollegesResult = await db.query(`
+    const followedCollegesResult = await db.query(
+      `
       SELECT c.*
       FROM colleges c
       JOIN college_followers cf ON c.id = cf.college_id
       WHERE cf.user_id = $1
       ORDER BY c.name
-    `, [userId]);
+    `,
+      [userId]
+    );
 
-    // Fix the query to include club_name and college_name
-    const participatedEventsResult = await db.query(`
+    const participatedEventsResult = await db.query(
+      `
       SELECT 
         e.*,
         c.name AS club_name,
@@ -359,7 +532,9 @@ app.get("/profile", isAuthenticated, async (req, res) => {
       JOIN colleges col ON c.college_id = col.id
       WHERE er.user_id = $1
       ORDER BY e.date DESC
-    `, [userId]);
+    `,
+      [userId]
+    );
 
     const userWithFollowing = await db.query(
       `SELECT u.*, 
@@ -380,17 +555,17 @@ app.get("/profile", isAuthenticated, async (req, res) => {
     const userData = {
       ...userResult.rows[0],
       followed_colleges: followedCollegesResult.rows,
-      participated_events: participatedEventsResult.rows.map(event => ({
+      participated_events: participatedEventsResult.rows.map((event) => ({
         ...event,
         formattedDate: formatDate(event.date),
-        formattedTime: formatTime(event.time)
+        formattedTime: formatTime(event.time),
       })),
-      following_clubs: userWithFollowing.rows[0].following_clubs
+      following_clubs: userWithFollowing.rows[0].following_clubs,
     };
 
-    res.render("pages/profile", { 
+    res.render("pages/profile", {
       user: userData,
-      searchTerm: ""
+      searchTerm: "",
     });
   } catch (error) {
     console.error(error);
@@ -399,60 +574,62 @@ app.get("/profile", isAuthenticated, async (req, res) => {
 });
 
 
-// Consolidated '/college/:id/follow' route
 app.post("/college/:id/follow", isAuthenticated, async (req, res) => {
   const collegeId = req.params.id;
   const userId = req.user.id;
   const action = req.body.action;
 
   try {
-    if (action === 'follow') {
+    if (action === "follow") {
       await db.query(
-        'INSERT INTO college_followers (user_id, college_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        "INSERT INTO college_followers (user_id, college_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
         [userId, collegeId]
       );
-    } else if (action === 'unfollow') {
+    } else if (action === "unfollow") {
       await db.query(
-        'DELETE FROM college_followers WHERE user_id = $1 AND college_id = $2',
+        "DELETE FROM college_followers WHERE user_id = $1 AND college_id = $2",
         [userId, collegeId]
       );
     }
 
     return res.json({ success: true });
   } catch (err) {
-    console.error('Follow/Unfollow error:', err);
-    return res.status(500).json({ success: false, error: 'Server error' });
+    console.error("Follow/Unfollow error:", err);
+    return res.status(500).json({ success: false, error: "Server error" });
   }
 });
 
-
 app.get("/profile/edit", isAuthenticated, async (req, res) => {
   try {
-    const userResult = await db.query(`
+    const userResult = await db.query(
+      `
       SELECT 
         u.*,
         c.name as college_name
       FROM users u
       LEFT JOIN colleges c ON u.college_id = c.id
       WHERE u.id = $1
-    `, [req.user.id]);
+    `,
+      [req.user.id]
+    );
 
-    const collegesResult = await db.query('SELECT id, name FROM colleges ORDER BY name');
-    
-    // Handle skills from JSONB
+    const collegesResult = await db.query(
+      "SELECT id, name FROM colleges ORDER BY name"
+    );
+
     const userData = {
       ...userResult.rows[0],
-      skills: userResult.rows[0].skills ? 
-              (typeof userResult.rows[0].skills === 'string' ? 
-                  JSON.parse(userResult.rows[0].skills) : 
-                  userResult.rows[0].skills) : 
-              []
+      skills: userResult.rows[0].skills
+        ? typeof userResult.rows[0].skills === "string"
+          ? JSON.parse(userResult.rows[0].skills)
+          : userResult.rows[0].skills
+        : [],
     };
 
     res.render("pages/edit-profile", {
       user: userData,
       colleges: collegesResult.rows,
-      searchTerm: ""
+      searchTerm: "",
     });
   } catch (error) {
     console.error(error);
@@ -460,56 +637,314 @@ app.get("/profile/edit", isAuthenticated, async (req, res) => {
   }
 });
 
+app.post('/profile/update', isAuthenticated, upload.single('photo'), async (req, res) => {
+  const client = await db.pool.connect();
+  let currentClubId, currentCollegeId, userRole, skillsArray;
 
-app.post("/profile/update", isAuthenticated, upload.single('photo'), async (req, res) => {
   try {
+    await client.query('BEGIN');
+
     const { name, bio, college_id } = req.body;
-    // Handle skills array
     const skills = req.body['skills[]'] || [];
-    const skillsArray = Array.isArray(skills) ? skills : [skills];
-    
+    skillsArray = Array.isArray(skills) ? skills : [skills];
     const userId = req.user.id;
+
+    // Get current user data
+    const userResult = await client.query(
+      'SELECT role, club_id, college_id FROM users WHERE id = $1',
+      [userId]
+    );
     
+    userRole = userResult.rows[0].role;
+    currentClubId = userResult.rows[0].club_id;
+    currentCollegeId = userResult.rows[0].college_id;
+
+    // Determine the final club_id and college_id based on role
+    let finalClubId, finalCollegeId;
+    
+    // Handle club_id
+    if (userRole === 'club_admin') {
+      finalClubId = currentClubId;
+    } else {
+      finalClubId = null;
+    }
+
+    // Handle college_id
+    if (userRole === 'college_admin') {
+      finalCollegeId = currentCollegeId; // Preserve existing college_id for college admins
+    } else {
+      finalCollegeId = null; // Ensure null for non-college admins
+    }
+
     let photoPath = req.user.photo;
     if (req.file) {
       photoPath = `/images/profile_photos/${req.file.filename}`;
     }
 
-    // Store skills as JSONB
-    await db.query(`
-      UPDATE users 
-      SET name = $1, 
-          bio = $2, 
-          college_id = $3, 
-          skills = $4::jsonb,
-          photo = $5,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = $6
-    `, [
-      name, 
-      bio || null, 
-      college_id, 
-      JSON.stringify(skillsArray), // Convert array to JSON string
-      photoPath,
-      userId
-    ]);
+    // Update user data
+    await client.query(
+      `UPDATE users 
+       SET name = $1, 
+           bio = $2, 
+           college_id = $3,
+           club_id = $4,
+           skills = $5::jsonb,
+           photo = $6,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $7`,
+      [
+        name,
+        bio || null,
+        finalCollegeId,
+        finalClubId,
+        JSON.stringify(skillsArray),
+        photoPath,
+        userId
+      ]
+    );
 
+    await client.query('COMMIT');
     res.redirect('/profile');
   } catch (error) {
-    console.error(error);
-    res.status(500).send("Server error");
+    await client.query('ROLLBACK');
+    console.error('Profile update error:', error);
+
+    // Re-render form with error
+    try {
+      const collegesResult = await db.query(
+        "SELECT id, name FROM colleges ORDER BY name"
+      );
+
+      res.render('pages/edit-profile', {
+        user: {
+          ...req.user,
+          ...req.body,
+          club_id: currentClubId,
+          college_id: currentCollegeId,
+          skills: skillsArray
+        },
+        colleges: collegesResult.rows,
+        error: 'Failed to update profile. Please try again.',
+        searchTerm: ''
+      });
+    } catch (renderError) {
+      console.error('Error rendering profile edit page:', renderError);
+      res.status(500).send('An error occurred while updating your profile');
+    }
+  } finally {
+    client.release();
   }
 });
 
 
-// Removed duplicate '/college/:id/follow' route
+// Create new club route
+app.get('/club/new', isCollegeAdmin, async (req, res) => {
+  try {
+      // Get college details for the admin
+      const collegeResult = await db.query(
+          "SELECT * FROM colleges WHERE id = $1",
+          [req.user.college_id]
+      );
 
+      res.render('pages/club-form', {
+          user: req.user,
+          college: collegeResult.rows[0],
+          club: null,
+          mode: 'create',
+          error: null,
+          searchTerm: ''
+      });
+  } catch (error) {
+      console.error('Error loading club creation form:', error);
+      res.status(500).send("Server error");
+  }
+});
+
+app.post('/club/new', isCollegeAdmin, upload.single('logo'), async (req, res) => {
+  const client = await db.pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    const { 
+      name, description, type,
+      adminName, adminEmail, adminPassword, adminPhone 
+    } = req.body;
+
+    // Debug log
+    console.log('Received club type:', type);
+    console.log('Request body:', req.body);
+
+    // Normalize the type field
+    const normalizedType = type?.toString().toUpperCase().trim();
+    console.log('Normalized type:', normalizedType);
+    
+    // Validate type
+    if (!['CLUB', 'SOCIETY', 'FEST'].includes(normalizedType)) {
+      throw new Error(`Invalid club type: ${normalizedType}`);
+    }
+
+    // Basic validation
+    if (!name || !type || !adminName || !adminEmail || !adminPassword) {
+      const collegeResult = await db.query(
+        "SELECT * FROM colleges WHERE id = $1",
+        [req.user.college_id]
+      );
+
+      return res.render('pages/club-form', {
+        user: req.user,
+        college: collegeResult.rows[0],
+        club: req.body,
+        mode: 'create',
+        error: 'Please fill in all required fields',
+        searchTerm: ''
+      });
+    }
+
+    let logoPath = null;
+    if (req.file) {
+      logoPath = `/images/club_logos/${req.file.filename}`;
+    }
+
+    // Insert new club
+    const clubResult = await client.query(
+      `INSERT INTO clubs (name, description, type, logo, college_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [name, description, normalizedType, logoPath, req.user.college_id]
+    );
+
+    const clubId = clubResult.rows[0].id;
+
+    // Create club admin user with password_hash instead of password
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
+    await client.query(
+      `INSERT INTO users (name, email, password_hash, role, club_id, phone)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [adminName, adminEmail, hashedPassword, 'club_admin', clubId, adminPhone]
+    );
+
+    await client.query('COMMIT');
+    res.redirect('/college-admin');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error creating club:', error);
+    
+    const collegeResult = await db.query(
+      "SELECT * FROM colleges WHERE id = $1",
+      [req.user.college_id]
+    );
+
+    return res.render('pages/club-form', {
+      user: req.user,
+      college: collegeResult.rows[0],
+      club: req.body,
+      mode: 'create',
+      error: 'Error creating club. Please try again.',
+      searchTerm: ''
+    });
+  } finally {
+    client.release();
+  }
+});
+
+// Edit club routes
+app.get('/club/:id/edit', isCollegeAdmin, async (req, res) => {
+  try {
+      const clubId = parseInt(req.params.id);
+      
+      // Verify the club belongs to the admin's college
+      const clubResult = await db.query(
+          `SELECT c.* 
+           FROM clubs c
+           WHERE c.id = $1 AND c.college_id = $2`,
+          [clubId, req.user.college_id]
+      );
+
+      if (!clubResult.rows[0]) {
+          return res.status(404).send("Club not found or unauthorized");
+      }
+
+      const collegeResult = await db.query(
+          "SELECT * FROM colleges WHERE id = $1",
+          [req.user.college_id]
+      );
+
+      res.render('pages/club-form', {
+          user: req.user,
+          college: collegeResult.rows[0],
+          club: clubResult.rows[0],
+          mode: 'edit',
+          error: null,
+          searchTerm: ''
+      });
+  } catch (error) {
+      console.error('Error loading club edit form:', error);
+      res.status(500).send("Server error");
+  }
+});
+
+app.post('/club/:id/edit', isCollegeAdmin, upload.single('logo'), async (req, res) => {
+  try {
+      const clubId = parseInt(req.params.id);
+      const { name, description, type } = req.body;
+
+      // Verify the club belongs to the admin's college
+      const checkClub = await db.query(
+          "SELECT id FROM clubs WHERE id = $1 AND college_id = $2",
+          [clubId, req.user.college_id]
+      );
+
+      if (!checkClub.rows[0]) {
+          return res.status(404).send("Club not found or unauthorized");
+      }
+
+      // Basic validation
+      if (!name || !type) {
+          return res.render('pages/club-form', {
+              user: req.user,
+              college: (await db.query("SELECT * FROM colleges WHERE id = $1", [req.user.college_id])).rows[0],
+              club: { id: clubId, ...req.body },
+              mode: 'edit',
+              error: 'Please fill in all required fields',
+              searchTerm: ''
+          });
+      }
+
+      let logoPath = undefined;
+      if (req.file) {
+          logoPath = `/images/club_logos/${req.file.filename}`;
+      }
+
+      // Update club
+      const updateQuery = `
+          UPDATE clubs 
+          SET name = $1, 
+              description = $2, 
+              type = $3
+              ${logoPath ? ', logo = $4' : ''},
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $${logoPath ? '5' : '4'} AND college_id = $${logoPath ? '6' : '5'}
+      `;
+
+      const updateValues = logoPath 
+          ? [name, description, type, logoPath, clubId, req.user.college_id]
+          : [name, description, type, clubId, req.user.college_id];
+
+      await db.query(updateQuery, updateValues);
+
+      res.redirect('/college-admin');
+  } catch (error) {
+      console.error('Error updating club:', error);
+      res.status(500).send("Server error");
+  }
+});
 
 app.get("/club/:id", async (req, res) => {
   try {
     const clubId = req.params.id;
     const userId = req.user?.id;
-    const searchTerm = req.query.search || ''; // Add this line
+    const searchTerm = req.query.search || ""; // Add this line
 
     // Get club details
     const clubResult = await db.query(
@@ -526,7 +961,7 @@ app.get("/club/:id", async (req, res) => {
     let isFollowing = false;
     if (userId) {
       const followResult = await db.query(
-        'SELECT EXISTS(SELECT 1 FROM club_followers WHERE user_id = $1 AND club_id = $2)',
+        "SELECT EXISTS(SELECT 1 FROM club_followers WHERE user_id = $1 AND club_id = $2)",
         [userId, clubId]
       );
       isFollowing = followResult.rows[0].exists;
@@ -534,7 +969,7 @@ app.get("/club/:id", async (req, res) => {
 
     // Get followers count
     const followersResult = await db.query(
-      'SELECT COUNT(*) FROM club_followers WHERE club_id = $1',
+      "SELECT COUNT(*) FROM club_followers WHERE club_id = $1",
       [clubId]
     );
     const followersCount = parseInt(followersResult.rows[0].count);
@@ -558,7 +993,587 @@ app.get("/club/:id", async (req, res) => {
       isFollowing,
       followersCount,
       user: req.user,
-      searchTerm // Add this line
+      searchTerm, // Add this line
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server error");
+  }
+});
+
+app.post("/club/:id/follow", isAuthenticated, async (req, res) => {
+  const clubId = req.params.id;
+  const userId = req.user.id;
+  const action = req.body.action;
+
+  try {
+    if (action === "follow") {
+      await db.query(
+        "INSERT INTO club_followers (user_id, club_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [userId, clubId]
+      );
+    } else if (action === "unfollow") {
+      await db.query(
+        "DELETE FROM club_followers WHERE user_id = $1 AND club_id = $2",
+        [userId, clubId]
+      );
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("Follow/Unfollow error:", err);
+    return res.status(500).json({ success: false, error: "Server error" });
+  }
+});
+
+
+
+// College Admin Routes
+app.get("/college-admin", isCollegeAdmin, async (req, res) => {
+  try {
+    // Fetch college data for the admin
+    const collegeResult = await db.query(
+      "SELECT * FROM colleges WHERE id = $1",
+      [req.user.college_id]
+    );
+
+    // Fetch clubs in the college
+    const clubsResult = await db.query(
+      "SELECT * FROM clubs WHERE college_id = $1",
+      [req.user.college_id]
+    );
+
+    // Fetch events in the college
+    const eventsResult = await db.query(
+      `
+            SELECT e.*, c.name as club_name 
+            FROM events e 
+            JOIN clubs c ON e.club_id = c.id 
+            WHERE c.college_id = $1 
+            ORDER BY e.date DESC`,
+      [req.user.college_id]
+    );
+
+    res.render("pages/college-admin", {
+      user: req.user,
+      college: collegeResult.rows[0],
+      clubs: clubsResult.rows,
+      events: eventsResult.rows.map((event) => ({
+        ...event,
+        formattedDate: formatDate(event.date),
+        formattedTime: formatTime(event.time),
+      })),
+      searchTerm: "",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Server error");
+  }
+});
+
+// Club Admin Routes
+app.get("/club-admin", isClubAdmin, async (req, res) => {
+  try {
+    // Fetch club data for the admin
+    const clubResult = await db.query(
+      "SELECT c.*, col.name as college_name FROM clubs c JOIN colleges col ON c.college_id = col.id WHERE c.id = $1",
+      [req.user.club_id]
+    );
+
+    // Fetch events for the club
+    const eventsResult = await db.query(
+      `
+            SELECT e.*, 
+                   COUNT(er.user_id) as registration_count 
+            FROM events e 
+            LEFT JOIN event_registrations er ON e.id = er.event_id 
+            WHERE e.club_id = $1 
+            GROUP BY e.id 
+            ORDER BY e.date DESC`,
+      [req.user.club_id]
+    );
+
+    // Fetch club followers count
+    const followersResult = await db.query(
+      "SELECT COUNT(*) FROM club_followers WHERE club_id = $1",
+      [req.user.club_id]
+    );
+
+    res.render("pages/club-admin", {
+      user: req.user,
+      club: clubResult.rows[0],
+      events: eventsResult.rows.map((event) => ({
+        ...event,
+        formattedDate: formatDate(event.date),
+        formattedTime: formatTime(event.time),
+      })),
+      followersCount: followersResult.rows[0].count,
+      searchTerm: "",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Server error");
+  }
+});
+
+// IMPORTANT: Place specific routes BEFORE dynamic routes
+// Create New Event - This should come FIRST
+app.get("/event/new", isClubAdmin, async (req, res) => {
+  try {
+    const searchTerm = req.query.search || "";
+    const clubId = Number(req.user.club_id);
+    if (!Number.isInteger(clubId)) {
+      return res.status(400).send("Invalid club ID");
+    }
+    console.log("Club ID from user:", req.user.club_id);
+
+    // Get club details for the admin
+    const clubResult = await db.query(
+      "SELECT c.*, col.name as college_name FROM clubs c JOIN colleges col ON c.college_id = col.id WHERE c.id = $1",
+      [req.user.club_id]
+    );
+
+    if (!clubResult.rows[0]) {
+      return res.status(404).send("Club not found");
+    }
+
+    // Get college details
+    const collegeResult = await db.query(
+      "SELECT * FROM colleges WHERE id = $1",
+      [clubResult.rows[0].college_id]
+    );
+
+    res.render("pages/event-form.ejs", {
+      user: req.user,
+      club: clubResult.rows[0],
+      college: collegeResult.rows[0],
+      event: null,
+      mode: "create",
+      method: "POST",
+      searchTerm: searchTerm,
+      error: null,
+      title: "Create New Event",
+    });
+  } catch (error) {
+    console.error("Error creating new event:", error);
+    res.status(500).send("Server error");
+  }
+});
+
+app.post("/event/new", isClubAdmin, async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      date,
+      time,
+      venue,
+      role_tag,
+      event_type,
+      first_prize,
+      second_prize,
+      third_prize,
+      faqs,
+    } = req.body;
+
+    // Basic validation
+    if (!title || !description || !date || !time || !venue || !event_type) {
+      return res.render("pages/event-form.ejs", {
+        user: req.user,
+        club: (
+          await db.query(
+            "SELECT c.*, col.name as college_name FROM clubs c JOIN colleges col ON c.college_id = col.id WHERE c.id = $1",
+            [req.user.club_id]
+          )
+        ).rows[0],
+        event: req.body,
+        mode: "create",
+        searchTerm: "",
+        error: "Please fill in all required fields",
+      });
+    }
+
+    const result = await db.query(
+      `INSERT INTO events (
+                title, description, date, time, venue, 
+                role_tag, event_type, club_id, 
+                first_prize, second_prize, third_prize, faqs,
+                created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+            RETURNING id`,
+      [
+        title,
+        description,
+        date,
+        time,
+        venue,
+        role_tag || null,
+        event_type,
+        req.user.club_id,
+        first_prize || null,
+        second_prize || null,
+        third_prize || null,
+        faqs || null,
+      ]
+    );
+
+    res.redirect("/club-admin");
+  } catch (error) {
+    console.error("Error saving new event:", error);
+    res.status(500).send("Server error");
+  }
+});
+
+// 1. FIRST: Place specific routes
+app.get('/event/new', isClubAdmin, async (req, res) => {
+    // ... existing new event route code ...
+});
+
+app.post('/event/new', isClubAdmin, async (req, res) => {
+    // ... existing new event post handler code ...
+});
+
+// 2. THEN: Place registration routes
+app.post('/event/register', isAuthenticated, async (req, res) => {
+    try {
+        const eventId = req.body.eventId; // Get eventId from request body instead of params
+        const userId = req.user.id;
+
+        // Validate eventId
+        if (!eventId || isNaN(eventId)) {
+            return res.status(400).json({ success: false, message: "Invalid event ID" });
+        }
+
+        await db.query(
+            'INSERT INTO event_registrations (user_id, event_id) VALUES ($1, $2)',
+            [userId, eventId]
+        );
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error(error);
+
+        // PostgreSQL error code for unique violation: 23505
+        if (error.code === '23505') {
+            return res.json({ success: false, message: "Already registered" });
+        }
+
+        res.status(500).json({ success: false, message: "Registration failed" });
+    }
+});
+
+app.post("/event/:id/register", isAuthenticated, async (req, res) => {
+  try {
+    const eventId = req.params.id;
+    const userId = req.user.id;
+
+    if (!eventId || isNaN(eventId)) {
+      return res.status(400).json({ success: false, message: "Invalid event ID" });
+    }
+
+    await db.query(
+      "INSERT INTO event_registrations (user_id, event_id) VALUES ($1, $2)",
+      [userId, eventId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+
+    // PostgreSQL error code for unique violation: 23505
+    if (error.code === "23505") {
+      return res.json({ success: false, message: "Already registered" });
+    }
+
+    res.status(500).json({ success: false, message: "Registration failed" });
+  }
+});
+
+// Download registrations as CSV
+app.get("/event/:id/registrations/download", isClubAdmin, async (req, res) => {
+  try {
+    // Verify event ownership
+    const eventCheck = await db.query(
+      "SELECT id, title FROM events WHERE id = $1 AND club_id = $2",
+      [req.params.id, req.user.club_id]
+    );
+
+    if (!eventCheck.rows[0]) {
+      return res.status(404).send("Event not found or unauthorized");
+    }
+
+    // Get registrations
+    const registrations = await db.query(
+      `SELECT 
+                u.name, u.email, u.phone, u.college,
+                er.created_at as registration_date
+            FROM event_registrations er
+            JOIN users u ON er.user_id = u.id
+            WHERE er.event_id = $1
+            ORDER BY er.created_at DESC`,
+      [req.params.id]
+    );
+
+    // Create CSV content
+    const csvHeader = "Name,Email,Phone,College,Registration Date\n";
+    const csvRows = registrations.rows
+      .map(
+        (reg) =>
+          `${reg.name},${reg.email},${reg.phone || ""},${reg.college || ""},${
+            reg.registration_date
+          }`
+      )
+      .join("\n");
+    const csvContent = csvHeader + csvRows;
+
+    // Set headers for file download
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=registrations-${req.params.id}.csv`
+    );
+
+    res.send(csvContent);
+  } catch (error) {
+    console.error("Error downloading registrations:", error);
+    res.status(500).send("Server error");
+  }
+});
+
+
+app.get("/event/:id/registrations", isClubAdmin, async (req, res) => {
+  const eventId = parseInt(req.params.id);
+  if (isNaN(eventId)) {
+    return res.status(404).send("Invalid event ID");
+  }
+
+  try {
+    const searchTerm = req.query.search || "";
+
+    // Get event and verify it belongs to the admin's club
+    const eventResult = await db.query(
+      `SELECT e.*, c.name as club_name, c.college_id,
+              TO_CHAR(e.date, 'Mon DD, YYYY') as formatted_date,
+              TO_CHAR(e.time, 'HH24:MI') as formatted_time
+       FROM events e
+       JOIN clubs c ON e.club_id = c.id
+       WHERE e.id = $1 AND e.club_id = $2`,
+      [eventId, req.user.club_id]
+    );
+
+    if (!eventResult.rows[0]) {
+      return res.status(404).send("Event not found or unauthorized");
+    }
+
+    const collegeResult = await db.query(
+      "SELECT * FROM colleges WHERE id = $1",
+      [eventResult.rows[0].college_id]
+    );
+
+    const registrationsResult = await db.query(
+      `SELECT 
+         er.id as registration_id,
+         er.created_at as registration_date,
+         u.id as user_id,
+         u.name as user_name,
+         u.email as user_email,
+         COALESCE(u.phone, '-') as user_phone,
+         COALESCE(col.name, '-') as user_college,
+         TO_CHAR(er.created_at, 'Mon DD, YYYY HH24:MI') as formatted_registration_date
+       FROM event_registrations er
+       JOIN users u ON er.user_id = u.id
+       LEFT JOIN colleges col ON u.college_id = col.id
+       WHERE er.event_id = $1
+       ORDER BY er.created_at DESC`,
+      [eventId]
+    );
+
+    const countResult = await db.query(
+      "SELECT COUNT(*) FROM event_registrations WHERE event_id = $1",
+      [eventId]
+    );
+
+    res.render("pages/event-registrations.ejs", {
+      user: req.user,
+      event: eventResult.rows[0],
+      college: collegeResult.rows[0],
+      registrations: registrationsResult.rows,
+      registrationCount: parseInt(countResult.rows[0].count),
+      method: "GET",
+      mode: "view",
+      searchTerm: searchTerm,
+      error: null,
+      title: "Event Registrations",
+    });
+  } catch (error) {
+    console.error("Error fetching registrations:", error);
+    res.status(500).send("Server error");
+  }
+});
+
+
+
+app.get("/event/:id/edit", isClubAdmin, async (req, res) => {
+  if (isNaN(req.params.id)) {
+    return res.status(404).send("Invalid event ID");
+  }
+
+  try {
+    const eventId = parseInt(req.params.id);
+    // Verify the event belongs to the admin's club
+    const eventResult = await db.query(
+      `SELECT * FROM events 
+            WHERE id = $1 AND club_id = $2`,
+      [eventId, req.user.club_id]
+    );
+
+    if (!eventResult.rows[0]) {
+      return res.status(404).send("Event not found or unauthorized");
+    }
+
+    const clubResult = await db.query(
+      "SELECT c.*, col.name as college_name FROM clubs c JOIN colleges col ON c.college_id = col.id WHERE c.id = $1",
+      [req.user.club_id]
+    );
+
+    res.render("pages/event-form", {
+      user: req.user,
+      club: clubResult.rows[0],
+      event: eventResult.rows[0],
+      mode: "edit",
+      searchTerm: "", // Add this line
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Server error");
+  }
+});
+
+app.post("/event/:id/edit", isClubAdmin, async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      date,
+      time,
+      venue,
+      role_tag,
+      event_type,
+      first_prize,
+      second_prize,
+      third_prize,
+      faqs,
+    } = req.body;
+
+    // First verify if the event exists and belongs to the admin's club
+    const checkEvent = await db.query(
+      "SELECT id FROM events WHERE id = $1 AND club_id = $2",
+      [req.params.id, req.user.club_id]
+    );
+
+    if (!checkEvent.rows[0]) {
+      return res.status(404).send("Event not found or unauthorized");
+    }
+
+    // Update the event
+    const result = await db.query(
+      `UPDATE events 
+            SET title = $1, 
+                description = $2, 
+                date = $3, 
+                time = $4, 
+                venue = $5, 
+                role_tag = $6, 
+                event_type = $7, 
+                first_prize = $8, 
+                second_prize = $9, 
+                third_prize = $10, 
+                faqs = $11
+            WHERE id = $12 AND club_id = $13`,
+      [
+        title,
+        description,
+        date,
+        time,
+        venue,
+        role_tag || null,
+        event_type,
+        first_prize || null,
+        second_prize || null,
+        third_prize || null,
+        faqs || null,
+        req.params.id,
+        req.user.club_id,
+      ]
+    );
+
+    res.redirect("/club-admin");
+  } catch (error) {
+    console.error("Error updating event:", error);
+    res.status(500).send(`Server error: ${error.message}`);
+  }
+});
+
+app.get("/event/:id", async (req, res) => {
+  const eventId = req.params.id;
+  const searchTerm = req.query.search || "";
+
+  // Check if the ID is numeric
+  if (isNaN(req.params.id)) {
+    return res.status(404).send("Invalid event ID");
+  }
+
+  try {
+    const eventResult = await db.query(
+      `SELECT 
+        e.id,
+        e.title, 
+        e.description, 
+        e.date, 
+        e.time, 
+        e.venue, 
+        e.role_tag, 
+        e.event_type,
+        e.first_prize,
+        e.second_prize,
+        e.third_prize,
+        e.faqs,
+        c.name AS club_name, 
+        col.name AS college_name
+      FROM events e
+      JOIN clubs c ON e.club_id = c.id
+      JOIN colleges col ON c.college_id = col.id
+      WHERE e.id = $1`,
+      [eventId]
+    );
+
+    let isRegistered = false;
+    if (req.user) {
+      const registrationResult = await db.query(
+        "SELECT 1 FROM event_registrations WHERE user_id = $1 AND event_id = $2",
+        [req.user.id, eventId]
+      );
+      isRegistered = registrationResult.rows.length > 0;
+    }
+
+    if (!eventResult.rows[0]) {
+      return res.status(404).send("Event not found");
+    }
+
+    const event = eventResult.rows[0];
+    const formattedEvent = {
+      ...event,
+      name: event.title,
+      formattedDate: formatDate(event.date),
+      formattedTime: formatTime(event.time),
+    };
+    // Debugging log removed
+    // console.log(formattedEvent);
+    res.render("pages/event.ejs", {
+      event: formattedEvent,
+      searchTerm,
+      isRegistered,
+      user: req.user,
     });
   } catch (err) {
     console.error(err);
@@ -567,31 +1582,176 @@ app.get("/club/:id", async (req, res) => {
 });
 
 
-app.post('/club/:id/follow', isAuthenticated, async (req, res) => {
-  const clubId = req.params.id;
-  const userId = req.user.id;
-  const action = req.body.action;
 
-  try {
-    if (action === 'follow') {
-      await db.query(
-        'INSERT INTO club_followers (user_id, club_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-        [userId, clubId]
-      );
-    } else if (action === 'unfollow') {
-      await db.query(
-        'DELETE FROM club_followers WHERE user_id = $1 AND club_id = $2',
-        [userId, clubId]
-      );
+// Delete college route
+app.delete('/college/:id', isSuperAdmin, async (req, res) => {
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const collegeId = req.params.id;
+        
+        // Delete related records first
+        await client.query('DELETE FROM college_followers WHERE college_id = $1', [collegeId]);
+        await client.query('DELETE FROM event_registrations WHERE event_id IN (SELECT e.id FROM events e JOIN clubs c ON e.club_id = c.id WHERE c.college_id = $1)', [collegeId]);
+        await client.query('DELETE FROM events WHERE club_id IN (SELECT id FROM clubs WHERE college_id = $1)', [collegeId]);
+        await client.query('DELETE FROM club_followers WHERE club_id IN (SELECT id FROM clubs WHERE college_id = $1)', [collegeId]);
+        await client.query('DELETE FROM users WHERE college_id = $1 OR club_id IN (SELECT id FROM clubs WHERE college_id = $1)', [collegeId]);
+        await client.query('DELETE FROM clubs WHERE college_id = $1', [collegeId]);
+        await client.query('DELETE FROM colleges WHERE id = $1', [collegeId]);
+        
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error deleting college:', error);
+        res.status(500).json({ success: false, error: 'Failed to delete college' });
+    } finally {
+        client.release();
     }
-
-    return res.json({ success: true });
-  } catch (err) {
-    console.error('Follow/Unfollow error:', err);
-    return res.status(500).json({ success: false, error: 'Server error' });
-  }
 });
 
+// Edit college route
+app.get('/college/:id/edit', isSuperAdmin, async (req, res) => {
+    try {
+        const collegeId = req.params.id;
+        const collegeResult = await db.query(
+            'SELECT * FROM colleges WHERE id = $1',
+            [collegeId]
+        );
+
+        const adminResult = await db.query(
+            `SELECT * FROM users 
+             WHERE college_id = $1 AND role = 'college_admin'`,
+            [collegeId]
+        );
+
+        if (!collegeResult.rows[0]) {
+            return res.status(404).send('College not found');
+        }
+
+        res.render('pages/college-form', {
+            user: req.user,
+            college: collegeResult.rows[0],
+            admin: adminResult.rows[0] || null,
+            mode: 'edit',
+            error: null,
+            searchTerm: ''
+        });
+    } catch (error) {
+        console.error('Error loading college edit form:', error);
+        res.status(500).send('Server error');
+    }
+});
+
+app.post('/college/:id/edit', isSuperAdmin, upload.single('logo'), async (req, res) => {
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const collegeId = req.params.id;
+        const { name, location, admin_name, admin_email, admin_password } = req.body;
+
+        // Update college details
+        const updateQuery = `
+            UPDATE colleges 
+            SET name = $1, 
+                location = $2
+                ${req.file ? ', logo = $3' : ''}
+            WHERE id = $${req.file ? '4' : '3'}
+            RETURNING *
+        `;
+
+        const updateValues = req.file 
+            ? [name, location, `/images/college_logos/${req.file.filename}`, collegeId]
+            : [name, location, collegeId];
+
+        await client.query(updateQuery, updateValues);
+
+        // Handle admin updates
+        if (admin_email) {
+            const existingAdmin = await client.query(
+                'SELECT * FROM users WHERE college_id = $1 AND role = $2',
+                [collegeId, 'college_admin']
+            );
+
+            if (existingAdmin.rows[0]) {
+                // Update existing admin
+                const updateAdminQuery = `
+                    UPDATE users 
+                    SET name = $1, 
+                        email = $2
+                        ${admin_password ? ', password_hash = $3' : ''}
+                    WHERE college_id = $4 AND role = 'college_admin'
+                `;
+
+                const updateAdminValues = admin_password
+                    ? [admin_name, admin_email, await bcrypt.hash(admin_password, 10), collegeId]
+                    : [admin_name, admin_email, collegeId];
+
+                await client.query(updateAdminQuery, updateAdminValues);
+            } else {
+                // Create new admin if email is provided
+                const hashedPassword = await bcrypt.hash(admin_password || 'defaultPassword123', 10);
+                await client.query(
+                    `INSERT INTO users (name, email, password_hash, role, college_id)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [admin_name, admin_email, hashedPassword, 'college_admin', collegeId]
+                );
+            }
+        }
+        
+        await client.query('COMMIT');
+        res.redirect('/super-admin');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error updating college:', error);
+        res.render('pages/college-form', {
+            user: req.user,
+            college: req.body,
+            admin: {
+                name: req.body.admin_name,
+                email: req.body.admin_email
+            },
+            mode: 'edit',
+            error: 'Failed to update college: ' + error.message,
+            searchTerm: ''
+        });
+    } finally {
+        client.release();
+    }
+});
+
+app.get('/colleges', async (req, res) => {
+  try {
+    const searchTerm = req.query.search || '';
+    
+    const query = `
+      SELECT 
+        id, 
+        name, 
+        location
+      FROM colleges
+      WHERE LOWER(name) LIKE LOWER($1)
+        OR LOWER(location) LIKE LOWER($1)
+      ORDER BY name ASC
+    `;
+    
+    const result = await db.query(query, [`%${searchTerm}%`]);
+    
+    res.render('pages/colleges', {
+      colleges: result.rows,
+      searchTerm: searchTerm,
+      user: req.user
+    });
+  } catch (error) {
+    console.error('Error fetching colleges:', error);
+    res.status(500).render('error', {
+      message: 'Failed to load colleges page',
+      error: error
+    });
+  }
+});
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

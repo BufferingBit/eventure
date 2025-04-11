@@ -134,3 +134,11 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Compiled CSS
+public/styles/style.css
+
+# Keep upload directories but ignore their contents
+!public/images/profile_photos/.gitkeep
+!public/images/college_logos/.gitkeep
+!public/images/event_logos/.gitkeep

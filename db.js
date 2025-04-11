@@ -19,7 +19,8 @@ function verifyDbEnvVariables() {
 // Verify environment variables before proceeding
 verifyDbEnvVariables();
 
-const db = new pg.Client({
+// Create a pool instead of a single client
+const pool = new pg.Pool({
   host: process.env.PG_HOST,
   user: process.env.PG_USER,
   database: process.env.PG_DATABASE,
@@ -27,12 +28,11 @@ const db = new pg.Client({
   port: process.env.PG_PORT || 5433,
 });
 
-try {
-  await db.connect();
-  console.log("Database connected successfully");
-} catch (err) {
-  console.error("Database connection error:", err);
-  process.exit(1);
-}
+// Helper function for queries
+const query = (text, params) => pool.query(text, params);
 
-export default db;
+export default {
+  pool,
+  query
+};
+
