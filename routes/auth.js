@@ -42,4 +42,5 @@ router.get('/logout', (req, res) => {
   });
 });
 
-
+// Make sure to export both the router as default and isAuthenticated as a named export
+export { router as default, isAuthenticated };

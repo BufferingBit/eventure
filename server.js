@@ -6,7 +6,7 @@ import path from "path";
 import db from "./db.js";
 import session from "express-session";
 import passport from "./config/auth.js";
-import authRoutes, { isAuthenticated } from "./routes/auth.js";
+import { router as authRoutes, isAuthenticated } from "./routes/auth.js";
 import fs from "fs";
 import bcrypt from "bcrypt";
 
