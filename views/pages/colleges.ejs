@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Colleges | Eventure</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+
+</head>
+<body>
+  <%- include('../partials/header.ejs') %>
+
+<div class="min-h-screen bg-gray-50">
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Hero Section -->
+    <div class="bg-blue-600 rounded-xl p-8 mb-10 text-white">
+      <h1 class="text-3xl font-bold mb-2">All Colleges</h1>
+      <p class="text-blue-100">Discover and explore colleges in our network</p>
+    </div>
+
+    <!-- Search and Filter Section -->
+    <div class="mb-10 bg-white rounded-xl shadow-sm p-6">
+      <form action="/colleges" method="GET" class="max-w-2xl">
+        <div class="relative flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input 
+            type="text" 
+            name="search" 
+            placeholder="Search colleges..." 
+            value="<%= searchTerm %>"
+            class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+          >
+          <button 
+            type="submit"
+            class="ml-3 px-5 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Search
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Colleges Grid -->
+    <div class="bg-white rounded-xl shadow-sm p-6">
+      <% if (colleges.length > 0) { %>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+          <% colleges.forEach(college => { %>
+            <a href="/college/<%= college.id %>"
+              class="bg-gray-50 rounded-lg hover:bg-gray-100 p-4 flex flex-col items-center transition-all duration-200 group border border-gray-200">
+              <div class="w-20 h-20 mb-3 flex items-center justify-center bg-white p-2 rounded-full shadow-sm">
+                <img 
+                  src="/images/college_logos/<%= college.name.toLowerCase().replace(/\s/g, '_') %>.png"
+                  alt="<%= college.name %>" 
+                  class="max-w-full max-h-full object-contain"
+                  onerror="this.src='/images/college_logos/default-college-logo.png'" 
+                />
+              </div>
+              <p class="text-sm font-semibold text-center group-hover:text-blue-600 transition-colors">
+                <%= college.name %>
+              </p>
+              <p class="text-xs text-gray-500 text-center mt-1">
+                <%= college.location %>
+              </p>
+            </a>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <div class="text-center py-12">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h3 class="mt-4 text-lg font-medium text-gray-900">No colleges found</h3>
+          <p class="mt-1 text-gray-500">No matching colleges found for "<%= searchTerm %>"</p>
+          <a href="/colleges" 
+             class="inline-block mt-6 px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
+            View all colleges
+          </a>
+        </div>
+      <% } %>
+    </div>
+  </main>
+</div>
+
+<%- include('../partials/footer.ejs') %>
+</body>
+</html>

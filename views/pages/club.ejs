@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= club.name %> | Eventure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .club-card {
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+        .club-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .event-card {
+            transition: all 0.2s ease;
+        }
+        .event-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .follow-btn {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .stat-card {
+            transition: transform 0.2s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-3px);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-gray-50">
+    <%- include('../partials/header.ejs') %>
+
+    <main class="flex-grow">
+        <!-- Club Header -->
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+            <div class="bg-white rounded-xl shadow-lg club-card p-8">
+                <div class="flex flex-col md:flex-row gap-8 items-center md:items-start">
+                    <div class="w-40 h-40 flex-shrink-0 rounded-xl overflow-hidden border-2 border-gray-100">
+                        <img src="/images/club_logos/<%= club.logo %>" 
+                             alt="<%= club.name %>" 
+                             class="w-full h-full object-cover"
+                             onerror="this.src='/images/club_logos/default_club_logo.png'" />
+                    </div>
+                    <div class="flex-grow text-center md:text-left">
+                        <h1 class="text-3xl font-bold mb-3 text-gray-900"><%= club.name %></h1>
+                        <p class="text-gray-600 mb-6 text"><%= club.description %></p>
+                        <div class="flex flex-wrap gap-4 justify-center md:justify-start items-center">
+                            <% if (user) { %>
+                                <button
+                                    onclick="toggleClubFollow(<%= club.id %>)"
+                                    class="follow-btn px-6 py-2.5 rounded-full shadow-md text-sm font-medium
+                                           <%= isFollowing ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white' %>"
+                                    data-following="<%= isFollowing %>">
+                                    <span class="flex items-center gap-2">
+                                        <%= isFollowing ? '✓ Following' : '+ Follow Club' %>
+                                    </span>
+                                </button>
+                            <% } else { %>
+                                <a href="/login" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-full shadow-md text-sm font-medium transition-colors">
+                                    Login to Follow
+                                </a>
+                            <% } %>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-5 items-center">
+                        <div class="bg-gradient-to-r from-blue-400 to-blue-600 rounded-xl px-8 py-5 text-center shadow-lg text-white min-w-[140px] stat-card">
+                            <p class="text-sm font-medium">Followers</p>
+                            <p class="text-3xl font-bold followers-count"><%= followersCount %></p>
+                        </div>
+                        <div class="bg-gradient-to-r from-purple-400 to-purple-600 rounded-xl px-8 py-5 text-center shadow-lg text-white min-w-[140px] stat-card">
+                            <p class="text-sm font-medium">Events</p>
+                            <p class="text-3xl font-bold"><%= eventsCount %></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Events Section -->
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-2xl font-bold text-gray-900">Upcoming Events</h2>
+                <% if (events.length > 0) { %>
+                    <span class="text-sm text-gray-500"><%= events.length %> upcoming event<%= events.length !== 1 ? 's' : '' %></span>
+                <% } %>
+            </div>
+            
+            <% if (events.length > 0) { %>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <% events.forEach(event => { %>
+                        <a href="/event/<%= event.id %>" class="block">
+                            <div class="bg-white rounded-xl overflow-hidden shadow-md event-card h-full">
+                                <div class="relative h-48 overflow-hidden">
+                                    <img src="/images/event_logos/<%= event.logo %>" 
+                                         alt="<%= event.title %>" 
+                                         class="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                                         onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
+                                </div>
+                                <div class="p-5">
+                                    <h3 class="text-lg font-semibold mb-2 text-gray-900 line-clamp-2"><%= event.title %></h3>
+                                    <div class="flex items-center text-sm text-gray-600 mb-1">
+                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                        </svg>
+                                        <%= event.formattedDate %>
+                                    </div>
+                                    <div class="flex items-center text-sm text-gray-600">
+                                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                        <%= event.formattedTime %>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    <% }) %>
+                </div>
+            <% } else { %>
+                <div class="bg-white rounded-xl shadow-sm p-8 text-center">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <h3 class="mt-2 text-lg font-medium text-gray-900">No upcoming events</h3>
+                    <p class="mt-1 text-gray-500">This club hasn't scheduled any events yet.</p>
+                </div>
+            <% } %>
+        </div>
+    </main>
+
+    <%- include('../partials/footer.ejs') %>
+
+    <script>
+        async function toggleClubFollow(clubId) {
+            try {
+                const btn = document.querySelector('.follow-btn');
+                const isFollowing = btn.dataset.following === 'true';
+                
+                // Add loading state
+                btn.disabled = true;
+                btn.innerHTML = '<span class="flex items-center gap-2">...</span>';
+                
+                const response = await fetch(`/club/${clubId}/follow`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ action: isFollowing ? 'unfollow' : 'follow' })
+                });
+        
+                const data = await response.json();
+                if (data.success) {
+                    btn.dataset.following = !isFollowing;
+                    
+                    // Button animation
+                    btn.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        btn.style.transform = 'scale(1)';
+                    }, 100);
+        
+                    if (isFollowing) {
+                        btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                        btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                        btn.innerHTML = '<span class="flex items-center gap-2">+ Follow Club</span>';
+                    } else {
+                        btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                        btn.classList.add('bg-green-600', 'hover:bg-green-700');
+                        btn.innerHTML = '<span class="flex items-center gap-2">✓ Following</span>';
+                    }
+
+                    // Update followers count
+                    const followersElement = document.querySelector('.followers-count');
+                    if (followersElement) {
+                        const currentCount = parseInt(followersElement.textContent);
+                        followersElement.textContent = isFollowing ? currentCount - 1 : currentCount + 1;
+                        
+                        // Count animation
+                        followersElement.style.transform = 'translateY(-5px)';
+                        followersElement.style.opacity = '0.8';
+                        setTimeout(() => {
+                            followersElement.style.transform = 'translateY(0)';
+                            followersElement.style.opacity = '1';
+                        }, 200);
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to update follow status');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= user.name %>'s Profile | Eventure</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col bg-gray-50 text-gray-800">
+  <%- include('../partials/header.ejs') %>
+
+  <div class="container mx-auto px-4 py-10">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-10">
+      
+      <!-- Profile Sidebar -->
+      <div class="bg-white rounded-2xl shadow-md p-6 space-y-6">
+        <div class="flex flex-col items-center text-center">
+          <img src="<%= user.photo %>" alt="Profile Picture" class="w-32 h-32 rounded-full object-cover mb-4 shadow">
+          <h2 class="text-2xl font-bold"><%= user.name %></h2>
+          <p class="text-sm text-gray-600 mb-1"><%= user.college_name %></p>
+          <p class="text-sm font-medium text-gray-700">Rank: <%= user.rank || 420 %></p>
+          <a href="/profile/edit" class="mt-4 w-full bg-blue-700 hover:bg-blue-800 text-white py-2 rounded-lg transition font-semibold">Edit Profile</a>
+        </div>
+
+        <!-- Followed Clubs -->
+        <div>
+          <h3 class="text-lg font-semibold mb-3">Followed Clubs</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <% user.following_clubs?.forEach(club => { %>
+              <a href="/club/<%= club.id %>" class="group">
+                <div class="bg-gray-50 rounded-xl shadow hover:shadow-md transition p-4 text-center">
+                  <img src="/images/club_logos/<%= club.logo %>" alt="<%= club.name %>" class="w-full h-16 object-contain mb-2" onerror="this.src='/images/club_logos/default_club_logo.png'" />
+                  <h4 class="text-sm font-medium group-hover:text-blue-700 transition-colors"><%= club.name %></h4>
+                </div>
+              </a>
+            <% }) %>
+          </div>
+        </div>
+
+        <!-- Followed Colleges -->
+        <div>
+          <h3 class="text-lg font-semibold mb-3">Followed Colleges</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <% if (user.followed_colleges?.length) { %>
+              <% user.followed_colleges.forEach(college => { %>
+                <a href="/college/<%= college.id %>" class="group">
+                  <div class="bg-gray-50 rounded-lg p-4 hover:shadow transition-all text-center">
+                    <img src="/images/college_logos/<%= college.name.toLowerCase().replace(/\s/g, '_') %>.png" alt="<%= college.name %>" class="w-full h-16 object-contain mb-2" onerror="this.src='/images/college_logos/default-college-logo.png'" />
+                    <p class="text-xs font-medium group-hover:text-blue-700"><%= college.name %></p>
+                  </div>
+                </a>
+              <% }) %>
+            <% } else { %>
+              <p class="text-sm text-gray-500 col-span-full text-center py-4">No colleges followed yet</p>
+            <% } %>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Section -->
+      <div class="md:col-span-2 space-y-10">
+        
+        <!-- Skills -->
+        <div class="bg-white rounded-2xl shadow-md p-6">
+          <h3 class="text-xl font-semibold mb-4">Skills</h3>
+          <div class="flex flex-wrap gap-3">
+            <% ['Web Dev', 'CP', 'ML & AI'].forEach(skill => { %>
+              <span class="px-5 py-1 bg-blue-700 text-white text-sm font-medium rounded-full shadow-sm"><%= skill %></span>
+            <% }) %>
+          </div>
+        </div>
+
+        <!-- Badges -->
+        <div class="bg-white rounded-2xl shadow-md p-6">
+          <h3 class="text-xl font-semibold mb-4">Badges</h3>
+          <div class="flex flex-wrap gap-6">
+            <% ['beginner', 'intermediate', 'expert'].forEach(badge => { %>
+              <img src="/images/badges/badge.png" alt="<%= badge %> badge" class="w-20 h-20 object-contain" onerror="this.src='/images/badges/default_badge.png'">
+            <% }) %>
+          </div>
+        </div>
+
+        <!-- Events Participated -->
+        <div class="bg-white rounded-2xl shadow-md p-6">
+          <h3 class="text-xl font-semibold mb-4">Events Participated</h3>
+          <% if (user.participated_events?.length) { %>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              <% user.participated_events.forEach(event => { %>
+                <a href="/event/<%= event.id %>" class="group block hover:scale-[1.02] transition-transform duration-200">
+                  <div class="bg-gray-100 rounded-xl overflow-hidden shadow-sm">
+                    <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg" alt="<%= event.title %>" class="w-full h-24 object-cover" onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
+                  </div>
+                  <div class="mt-2 px-1">
+                    <h4 class="text-sm font-semibold truncate"><%= event.title %></h4>
+                    <p class="text-xs text-gray-600"><%= event.college_name %></p>
+                    <p class="text-xs text-gray-500 mt-1">📅 <%= event.formattedDate %></p>
+                  </div>
+                </a>
+              <% }) %>
+            </div>
+          <% } else { %>
+            <p class="text-sm text-gray-500 text-center py-6">No events participated yet</p>
+          <% } %>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
