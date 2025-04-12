@@ -37,7 +37,7 @@
         <div class="flex flex-col md:flex-row justify-between items-center gap-8">
           <div class="flex items-center gap-6">
             <div class="w-24 h-24 flex-shrink-0 rounded-lg bg-gray-100 overflow-hidden border border-gray-200">
-              <img src="/images/college_logos/<%= college.name.toLowerCase().replace(/\s/g, '_') %>.png"
+              <img src="<%= getImageUrl(college.logo, `/images/college_logos/${college.name.toLowerCase().replace(/\s/g, '_')}.png`) %>"
                   alt="<%= college.name %>" class="w-full h-full object-contain"
                   onerror="this.src='/images/college_logos/default-college-logo.png'" />
             </div>
@@ -79,26 +79,26 @@
     <!-- Tabs -->
     <div class="max-w-7xl mx-auto px-6 mb-6">
       <div class="flex flex-wrap justify-center gap-2">
-        <button 
-          onclick="switchTab('events')" 
+        <button
+          onclick="switchTab('events')"
           class="tab-btn px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
           data-tab="events">
           <span class="relative">Upcoming Events</span>
         </button>
-        <button 
-          onclick="switchTab('clubs')" 
+        <button
+          onclick="switchTab('clubs')"
           class="tab-btn px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
           data-tab="clubs">
           <span class="relative">Clubs</span>
         </button>
-        <button 
-          onclick="switchTab('societies')" 
+        <button
+          onclick="switchTab('societies')"
           class="tab-btn px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
           data-tab="societies">
           <span class="relative">Societies</span>
         </button>
-        <button 
-          onclick="switchTab('fests')" 
+        <button
+          onclick="switchTab('fests')"
           class="tab-btn px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
           data-tab="fests">
           <span class="relative">Fests</span>
@@ -116,9 +116,9 @@
             <a href="/event/<%= event.id %>" class="block">
               <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden card-hover">
                 <div class="h-40 bg-gray-100 overflow-hidden">
-                  <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg" 
-                      alt="<%= event.title %>" 
-                      class="w-full h-full object-cover" 
+                  <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
+                      alt="<%= event.title %>"
+                      class="w-full h-full object-cover"
                       onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
                 </div>
                 <div class="p-4">
@@ -153,8 +153,8 @@
             <a href="/club/<%= club.id %>" class="block">
               <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 card-hover">
                 <div class="h-32 bg-gray-50 rounded-md mb-4 flex items-center justify-center">
-                  <img src="/images/club_logos/<%= club.logo %>" 
-                      alt="<%= club.name %>" 
+                  <img src="<%= getImageUrl(club.logo, '/images/club_logos/default_club_logo.png') %>"
+                      alt="<%= club.name %>"
                       class="h-full object-contain p-2"
                       onerror="this.src='/images/club_logos/default_club_logo.png'" />
                 </div>
@@ -174,10 +174,10 @@
             <a href="/club/<%= society.id %>" class="block">
               <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 card-hover">
                 <div class="h-32 bg-gray-50 rounded-md mb-4 flex items-center justify-center">
-                  <img src="/images/society_logos/society_default_logo.png" 
-                      alt="<%= society.name %>" 
+                  <img src="<%= getImageUrl(society.logo, '/images/society_logos/society_default_logo.png') %>"
+                      alt="<%= society.name %>"
                       class="h-full object-contain p-2"
-                      onerror="this.src='/images/club_logos/default-club-logo.png'" />
+                      onerror="this.src='/images/club_logos/default_club_logo.png'" />
                 </div>
                 <h3 class="text-base font-semibold text-gray-800 mb-1"><%= society.name %></h3>
                 <p class="text-xs text-gray-500 line-clamp-2"><%= society.description || 'No description available' %></p>
@@ -195,10 +195,10 @@
             <a href="/club/<%= fest.id %>" class="block">
               <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 card-hover">
                 <div class="h-32 bg-gray-50 rounded-md mb-4 flex items-center justify-center">
-                  <img src="/images/fest_logos/fest_default_logo.jpg" 
-                      alt="<%= fest.name %>" 
+                  <img src="<%= getImageUrl(fest.logo, '/images/fest_logos/fest_default_logo.jpg') %>"
+                      alt="<%= fest.name %>"
                       class="h-full object-contain p-2"
-                      onerror="this.src='/images/club_logos/default-club-logo.png'" />
+                      onerror="this.src='/images/club_logos/default_club_logo.png'" />
                 </div>
                 <h3 class="text-base font-semibold text-gray-800 mb-1"><%= fest.name %></h3>
                 <p class="text-xs text-gray-500 line-clamp-2"><%= fest.description || 'No description available' %></p>
@@ -209,7 +209,7 @@
       </div>
     </div>
   </div>
-  
+
   <%- include('../partials/footer.ejs') %>
 
   <script>
@@ -218,36 +218,36 @@
       document.querySelectorAll('.tab-content').forEach(section => {
         section.classList.add('hidden');
       });
-      
+
       // Show selected content section
       const selectedSection = document.getElementById(`${tabName}-section`);
       if (selectedSection) {
         selectedSection.classList.remove('hidden');
       }
-      
+
       // Update tab button styles
       document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active', 'bg-blue-600', 'text-white');
         btn.classList.add('text-gray-500', 'hover:text-gray-700');
       });
-      
+
       const selectedTab = document.querySelector(`[data-tab="${tabName}"]`);
       if (selectedTab) {
         selectedTab.classList.add('active', 'bg-blue-600', 'text-white');
         selectedTab.classList.remove('text-gray-500', 'hover:text-gray-700');
       }
     }
-    
+
     // Initialize the first tab as active when the page loads
     document.addEventListener('DOMContentLoaded', () => {
       switchTab('events');
     });
-    
+
     async function toggleFollow(collegeId) {
         try {
             const btn = document.querySelector('.follow-btn');
             const isFollowing = btn.dataset.following === 'true';
-            
+
             const response = await fetch(`/college/${collegeId}/follow`, {
                 method: 'POST',
                 headers: {
@@ -255,17 +255,17 @@
                 },
                 body: JSON.stringify({ action: isFollowing ? 'unfollow' : 'follow' })
             });
-    
+
             const data = await response.json();
             if (data.success) {
                 btn.dataset.following = !isFollowing;
-                
+
                 // Update button text and styling with animation
                 btn.style.transform = 'scale(0.95)';
                 setTimeout(() => {
                     btn.style.transform = 'scale(1)';
                 }, 100);
-    
+
                 if (isFollowing) {
                     btn.classList.remove('bg-green-600', 'hover:bg-green-700');
                     btn.classList.add('bg-blue-600', 'hover:bg-blue-700');

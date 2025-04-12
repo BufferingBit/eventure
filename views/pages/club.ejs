@@ -44,8 +44,8 @@
             <div class="bg-white rounded-xl shadow-lg club-card p-8">
                 <div class="flex flex-col md:flex-row gap-8 items-center md:items-start">
                     <div class="w-40 h-40 flex-shrink-0 rounded-xl overflow-hidden border-2 border-gray-100">
-                        <img src="/images/club_logos/<%= club.logo %>" 
-                             alt="<%= club.name %>" 
+                        <img src="<%= getImageUrl(club.logo, '/images/club_logos/default_club_logo.png') %>"
+                             alt="<%= club.name %>"
                              class="w-full h-full object-cover"
                              onerror="this.src='/images/club_logos/default_club_logo.png'" />
                     </div>
@@ -92,15 +92,15 @@
                     <span class="text-sm text-gray-500"><%= events.length %> upcoming event<%= events.length !== 1 ? 's' : '' %></span>
                 <% } %>
             </div>
-            
+
             <% if (events.length > 0) { %>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     <% events.forEach(event => { %>
                         <a href="/event/<%= event.id %>" class="block">
                             <div class="bg-white rounded-xl overflow-hidden shadow-md event-card h-full">
                                 <div class="relative h-48 overflow-hidden">
-                                    <img src="/images/event_logos/<%= event.logo %>" 
-                                         alt="<%= event.title %>" 
+                                    <img src="/images/event_logos/<%= event.logo %>"
+                                         alt="<%= event.title %>"
                                          class="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                                          onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
                                 </div>
@@ -142,11 +142,11 @@
             try {
                 const btn = document.querySelector('.follow-btn');
                 const isFollowing = btn.dataset.following === 'true';
-                
+
                 // Add loading state
                 btn.disabled = true;
                 btn.innerHTML = '<span class="flex items-center gap-2">...</span>';
-                
+
                 const response = await fetch(`/club/${clubId}/follow`, {
                     method: 'POST',
                     headers: {
@@ -154,17 +154,17 @@
                     },
                     body: JSON.stringify({ action: isFollowing ? 'unfollow' : 'follow' })
                 });
-        
+
                 const data = await response.json();
                 if (data.success) {
                     btn.dataset.following = !isFollowing;
-                    
+
                     // Button animation
                     btn.style.transform = 'scale(0.95)';
                     setTimeout(() => {
                         btn.style.transform = 'scale(1)';
                     }, 100);
-        
+
                     if (isFollowing) {
                         btn.classList.remove('bg-green-600', 'hover:bg-green-700');
                         btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
@@ -180,7 +180,7 @@
                     if (followersElement) {
                         const currentCount = parseInt(followersElement.textContent);
                         followersElement.textContent = isFollowing ? currentCount - 1 : currentCount + 1;
-                        
+
                         // Count animation
                         followersElement.style.transform = 'translateY(-5px)';
                         followersElement.style.opacity = '0.8';

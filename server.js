@@ -9,7 +9,7 @@ import authRoutes, { isAuthenticated } from "./routes/auth.js";
 import fs from "fs";
 import bcrypt from "bcrypt";
 import dotenv from 'dotenv';
-import { createUploader, getImageUrl } from './config/cloudinary.js';
+import { createUploader, getImageUrl, addImageHelpers } from './config/cloudinary.js';
 import settingsService from './services/settings.js';
 
 // Load environment variables
@@ -99,6 +99,9 @@ app.set("views", path.join(__dirname, "views"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static('public'));
+
+// Add image helper to all templates
+addImageHelpers(app);
 
 app.use(
   session({

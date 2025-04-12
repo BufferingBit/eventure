@@ -87,16 +87,24 @@ export const createUploader = (folder) => {
 };
 
 // Helper function to get image URL (handles both local and Cloudinary paths)
-export const getImageUrl = (path) => {
-  if (!path) return null;
+export const getImageUrl = (path, defaultImage = null) => {
+  if (!path) return defaultImage;
 
   // If it's already a full URL (Cloudinary), return as is
   if (path.startsWith('http')) {
     return path;
   }
 
-  // For local development, prepend with /
+  // For local development, prepend with / if needed
   return path.startsWith('/') ? path : `/${path}`;
+};
+
+// Export a function to add to res.locals for use in templates
+export const addImageHelpers = (app) => {
+  app.use((req, res, next) => {
+    res.locals.getImageUrl = getImageUrl;
+    next();
+  });
 };
 
 export default cloudinary;
