@@ -88,14 +88,11 @@
               <a href="/event/<%= event.id %>"
                 class="block group transition-all duration-200 hover:-translate-y-1">
                 <div class="bg-gray-50 rounded-xl overflow-hidden shadow-sm hover:shadow-md border border-gray-100">
-                  <!-- <div class="relative pt-[56.25%] overflow-hidden">
+                  <div class="relative pt-[56.25%] overflow-hidden">
                     <img src="<%= getImageUrl(event.banner, '/images/event_logos/default-event-image.jpeg') %>"
                       alt="<%= event.title %>"
                       class="absolute top-0 left-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
-                  </div> -->
-                  <div class="bg-gray-100 rounded-xl overflow-hidden shadow-sm">
-                    <img src="<%= getImageUrl(event.banner, '/images/event_logos/default-event-image.jpeg') %>" alt="<%= event.title %>" class="w-full h-24 object-cover" onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
                   </div>
                   <div class="p-4 space-y-2">
                     <h3 class="font-semibold group-hover:text-blue-600 transition-colors"><%= event.title %></h3>

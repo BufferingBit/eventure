@@ -230,6 +230,7 @@ app.get('/', async (req, res) => {
         e.date,
         e.time,
         e.venue,
+        e.banner,
         c.name AS college_name
       FROM events e
       JOIN clubs cl ON e.club_id = cl.id
@@ -557,6 +558,7 @@ app.get("/college/:id", async (req, res) => {
         e.venue,
         e.role_tag,
         e.event_type,
+        e.banner,
         c.name AS club_name,
         c.type AS club_type,
         col.name AS college_name
