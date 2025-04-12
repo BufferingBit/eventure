@@ -21,12 +21,30 @@
             <%= mode === 'create' ? 'Create New Event' : 'Edit Event' %>
         </h1>
 
-        <form method="POST" action="<%= mode === 'create' ? '/event/new' : `/event/${event.id}/edit` %>" class="space-y-6">
+        <form method="POST" action="<%= mode === 'create' ? '/event/new' : `/event/${event.id}/edit` %>" class="space-y-6" enctype="multipart/form-data">
             <div>
                 <label class="block text-sm font-medium text-gray-700">Event Title</label>
                 <input type="text" name="title" required
                     value="<%= event ? event.title : '' %>"
                     class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Event Banner</label>
+                <div class="mt-1 mb-4">
+                    <% if (event && event.banner) { %>
+                        <div class="mb-2">
+                            <img src="<%= getImageUrl(event.banner, '/images/event_logos/default-event-image.jpeg') %>"
+                                alt="Current banner"
+                                class="h-40 w-full object-cover rounded-lg"
+                                id="banner-preview">
+                        </div>
+                    <% } %>
+                    <input type="file" name="banner" accept="image/*"
+                        class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        id="banner-input">
+                    <p class="mt-1 text-xs text-gray-500">Recommended size: 1200x600 pixels. Max file size: 2MB.</p>
+                </div>
             </div>
 
             <div>
@@ -133,6 +151,28 @@
 </div>
 
 <%- include('../partials/footer') %>
+
+<script>
+    // Preview image before upload
+    document.getElementById('banner-input')?.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // Create preview element if it doesn't exist
+                let previewElement = document.getElementById('banner-preview');
+                if (!previewElement) {
+                    previewElement = document.createElement('img');
+                    previewElement.id = 'banner-preview';
+                    previewElement.className = 'h-40 w-full object-cover rounded-lg mb-2';
+                    document.getElementById('banner-input').parentNode.insertBefore(previewElement, document.getElementById('banner-input'));
+                }
+                previewElement.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+    });
+</script>
 </body>
 </html>
 

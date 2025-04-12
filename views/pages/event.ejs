@@ -34,7 +34,7 @@
 
         <!-- Event Image -->
         <div class="h-80 lg:h-auto">
-          <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
+          <img src="<%= getImageUrl(event.banner, `/images/event_logos/${event.title.toLowerCase().replace(/\s/g, '_')}.jpeg`) %>"
             alt="<%= event.title %>"
             class="w-full h-full object-cover"
             onerror="this.src='/images/event_logos/default-event-image.jpeg'" />

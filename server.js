@@ -21,7 +21,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 
-// Create uploaders for different types of content
+// Create uploaders for different types of images
 const profileUploader = createUploader('profile_photos');
 const collegeLogoUploader = createUploader('college_logos');
 const clubLogoUploader = createUploader('club_logos');
@@ -1288,7 +1288,7 @@ app.get("/event/new", isClubAdmin, async (req, res) => {
   }
 });
 
-app.post("/event/new", isClubAdmin, async (req, res) => {
+app.post("/event/new", isClubAdmin, eventImageUploader.single('banner'), async (req, res) => {
   try {
     const {
       title,
@@ -1321,13 +1321,19 @@ app.post("/event/new", isClubAdmin, async (req, res) => {
       });
     }
 
+    // Process banner image if uploaded
+    let bannerPath = null;
+    if (req.file) {
+      bannerPath = processImagePath(req.file, 'event_logos');
+    }
+
     const result = await db.query(
       `INSERT INTO events (
                 title, description, date, time, venue,
                 role_tag, event_type, club_id,
                 first_prize, second_prize, third_prize, faqs,
-                created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                banner, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             RETURNING id`,
       [
         title,
@@ -1342,6 +1348,7 @@ app.post("/event/new", isClubAdmin, async (req, res) => {
         second_prize || null,
         third_prize || null,
         faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
+        bannerPath
       ]
     );
 
@@ -1577,7 +1584,7 @@ app.get("/event/:id/edit", isClubAdmin, async (req, res) => {
   }
 });
 
-app.post("/event/:id/edit", isClubAdmin, async (req, res) => {
+app.post("/event/:id/edit", isClubAdmin, eventImageUploader.single('banner'), async (req, res) => {
   try {
     const {
       title,
@@ -1603,22 +1610,65 @@ app.post("/event/:id/edit", isClubAdmin, async (req, res) => {
       return res.status(404).send("Event not found or unauthorized");
     }
 
-    // Update the event
-    const result = await db.query(
-      `UPDATE events
-            SET title = $1,
-                description = $2,
-                date = $3,
-                time = $4,
-                venue = $5,
-                role_tag = $6,
-                event_type = $7,
-                first_prize = $8,
-                second_prize = $9,
-                third_prize = $10,
-                faqs = $11
-            WHERE id = $12 AND club_id = $13`,
-      [
+    // Process banner image if uploaded
+    let bannerPath = undefined;
+    if (req.file) {
+      bannerPath = processImagePath(req.file, 'event_logos');
+    }
+
+    // Prepare the update query
+    let updateQuery, updateValues;
+
+    if (bannerPath) {
+      updateQuery = `
+        UPDATE events
+        SET title = $1,
+            description = $2,
+            date = $3,
+            time = $4,
+            venue = $5,
+            role_tag = $6,
+            event_type = $7,
+            first_prize = $8,
+            second_prize = $9,
+            third_prize = $10,
+            faqs = $11,
+            banner = $12
+        WHERE id = $13 AND club_id = $14`;
+
+      updateValues = [
+        title,
+        description,
+        date,
+        time,
+        venue,
+        role_tag || null,
+        event_type,
+        first_prize || null,
+        second_prize || null,
+        third_prize || null,
+        faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
+        bannerPath,
+        req.params.id,
+        req.user.club_id,
+      ];
+    } else {
+      updateQuery = `
+        UPDATE events
+        SET title = $1,
+            description = $2,
+            date = $3,
+            time = $4,
+            venue = $5,
+            role_tag = $6,
+            event_type = $7,
+            first_prize = $8,
+            second_prize = $9,
+            third_prize = $10,
+            faqs = $11
+        WHERE id = $12 AND club_id = $13`;
+
+      updateValues = [
         title,
         description,
         date,
@@ -1632,7 +1682,11 @@ app.post("/event/:id/edit", isClubAdmin, async (req, res) => {
         faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
         req.params.id,
         req.user.club_id,
-      ]
+      ];
+    }
+
+    // Update the event
+    const result = await db.query(updateQuery, updateValues
     );
 
     res.redirect("/club-admin");
