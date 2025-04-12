@@ -93,6 +93,30 @@ const processImagePath = (file, folder) => {
   }
 };
 
+// Function to check and create the banner column in events table if it doesn't exist
+const ensureEventBannerColumn = async () => {
+  try {
+    // Check if banner column exists
+    const columnCheck = await db.query(
+      `SELECT EXISTS (
+        SELECT FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'events'
+        AND column_name = 'banner'
+      )`
+    );
+
+    // If column doesn't exist, create it
+    if (!columnCheck.rows[0].exists) {
+      console.log('Adding banner column to events table...');
+      await db.query('ALTER TABLE events ADD COLUMN banner VARCHAR(255)');
+      console.log('Banner column added successfully');
+    }
+  } catch (error) {
+    console.error('Error checking/creating banner column:', error);
+  }
+};
+
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
@@ -1954,6 +1978,21 @@ app.get('/colleges', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
+// Initialize database schema
+const initializeDatabase = async () => {
+  try {
+    // Ensure events table has banner column
+    await ensureEventBannerColumn();
+    console.log('Database schema initialization complete');
+  } catch (error) {
+    console.error('Error initializing database schema:', error);
+  }
+};
+
+// Start the server
+app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
+
+  // Initialize database schema
+  await initializeDatabase();
 });
