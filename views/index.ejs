@@ -28,7 +28,7 @@
              onerror="this.src='/images/site/default-hero.jpg'">
         <div class="absolute inset-0 bg-gradient-to-r from-blue-900/80 to-transparent flex flex-col justify-center p-8">
           <h1 class="text-3xl font-bold mb-2 text-white"><%= typeof siteTitle !== 'undefined' ? siteTitle : 'Eventure' %></h1>
-          <p class="text-blue-100 max-w-2xl"><%= typeof siteDescription !== 'undefined' ? siteDescription : 'Find exciting events happening across colleges and join the community' %></p>
+          <p class="text-blue-100 max-w-2xl"><%= typeof siteDescription !== 'undefined' ? siteDescription : 'Find exciting events happening across premier Institutes' %></p>
           <% if (user && user.role === 'super_admin') { %>
             <a href="/site-settings" class="mt-4 inline-flex items-center text-xs text-white/70 hover:text-white">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -89,7 +89,7 @@
                 class="block group transition-all duration-200 hover:-translate-y-1">
                 <div class="bg-gray-50 rounded-xl overflow-hidden shadow-sm hover:shadow-md border border-gray-100">
                   <div class="relative pt-[56.25%] overflow-hidden">
-                    <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
+                    <img src="<%= getImageUrl(event.banner, '/images/event_logos/default-event-image.jpeg') %>"
                       alt="<%= event.title %>"
                       class="absolute top-0 left-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       onerror="this.src='/images/event_logos/default-event-image.jpeg'" />

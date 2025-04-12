@@ -99,7 +99,7 @@
                         <a href="/event/<%= event.id %>" class="block">
                             <div class="bg-white rounded-xl overflow-hidden shadow-md event-card h-full">
                                 <div class="relative h-48 overflow-hidden">
-                                    <img src="/images/event_logos/<%= event.logo %>"
+                                    <img src="<%= getImageUrl(event.banner, '/images/event_logos/default-event-image.jpeg') %>"
                                          alt="<%= event.title %>"
                                          class="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                                          onerror="this.src='/images/event_logos/default-event-image.jpeg'" />

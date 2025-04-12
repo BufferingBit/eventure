@@ -116,7 +116,7 @@
             <a href="/event/<%= event.id %>" class="block">
               <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden card-hover">
                 <div class="h-40 bg-gray-100 overflow-hidden">
-                  <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
+                  <img src="<%= getImageUrl(event.banner, '/images/event_logos/default-event-image.jpeg') %>"
                       alt="<%= event.title %>"
                       class="w-full h-full object-cover"
                       onerror="this.src='/images/event_logos/default-event-image.jpeg'" />

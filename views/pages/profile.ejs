@@ -18,11 +18,11 @@
 
   <div class="container mx-auto px-4 py-10">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-10">
-      
+
       <!-- Profile Sidebar -->
       <div class="bg-white rounded-2xl shadow-md p-6 space-y-6">
         <div class="flex flex-col items-center text-center">
-          <img src="<%= user.photo %>" alt="Profile Picture" class="w-32 h-32 rounded-full object-cover mb-4 shadow">
+          <img src="<%= getImageUrl(user.photo, '/images/profile_photos/default-profile.jpg') %>" alt="Profile Picture" class="w-32 h-32 rounded-full object-cover mb-4 shadow" onerror="this.src='/images/profile_photos/default-profile.jpg'">
           <h2 class="text-2xl font-bold"><%= user.name %></h2>
           <p class="text-sm text-gray-600 mb-1"><%= user.college_name %></p>
           <p class="text-sm font-medium text-gray-700">Rank: <%= user.rank || 420 %></p>
@@ -36,7 +36,7 @@
             <% user.following_clubs?.forEach(club => { %>
               <a href="/club/<%= club.id %>" class="group">
                 <div class="bg-gray-50 rounded-xl shadow hover:shadow-md transition p-4 text-center">
-                  <img src="/images/club_logos/<%= club.logo %>" alt="<%= club.name %>" class="w-full h-16 object-contain mb-2" onerror="this.src='/images/club_logos/default_club_logo.png'" />
+                  <img src="<%= getImageUrl(club.logo, '/images/club_logos/default_club_logo.png') %>" alt="<%= club.name %>" class="w-full h-16 object-contain mb-2" onerror="this.src='/images/club_logos/default_club_logo.png'" />
                   <h4 class="text-sm font-medium group-hover:text-blue-700 transition-colors"><%= club.name %></h4>
                 </div>
               </a>
@@ -66,7 +66,7 @@
 
       <!-- Right Section -->
       <div class="md:col-span-2 space-y-10">
-        
+
         <!-- Skills -->
         <div class="bg-white rounded-2xl shadow-md p-6">
           <h3 class="text-xl font-semibold mb-4">Skills</h3>
@@ -95,7 +95,7 @@
               <% user.participated_events.forEach(event => { %>
                 <a href="/event/<%= event.id %>" class="group block hover:scale-[1.02] transition-transform duration-200">
                   <div class="bg-gray-100 rounded-xl overflow-hidden shadow-sm">
-                    <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg" alt="<%= event.title %>" class="w-full h-24 object-cover" onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
+                    <img src="<%= getImageUrl(event.banner, '/images/event_logos/default-event-image.jpeg') %>" alt="<%= event.title %>" class="w-full h-24 object-cover" onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
                   </div>
                   <div class="mt-2 px-1">
                     <h4 class="text-sm font-semibold truncate"><%= event.title %></h4>
