@@ -22,10 +22,13 @@
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Hero Section -->
       <div class="relative rounded-xl overflow-hidden mb-10">
-        <img src="<%= heroImage %>" alt="<%= siteTitle %>" class="w-full h-64 object-cover" onerror="this.src='/images/site/default-hero.jpg'">
+        <img src="<%= typeof heroImage !== 'undefined' ? heroImage : '/images/site/default-hero.jpg' %>"
+             alt="<%= typeof siteTitle !== 'undefined' ? siteTitle : 'Eventure' %>"
+             class="w-full h-64 object-cover"
+             onerror="this.src='/images/site/default-hero.jpg'">
         <div class="absolute inset-0 bg-gradient-to-r from-blue-900/80 to-transparent flex flex-col justify-center p-8">
-          <h1 class="text-3xl font-bold mb-2 text-white"><%= siteTitle %></h1>
-          <p class="text-blue-100 max-w-2xl"><%= siteDescription %></p>
+          <h1 class="text-3xl font-bold mb-2 text-white"><%= typeof siteTitle !== 'undefined' ? siteTitle : 'Eventure' %></h1>
+          <p class="text-blue-100 max-w-2xl"><%= typeof siteDescription !== 'undefined' ? siteDescription : 'Find exciting events happening across colleges and join the community' %></p>
           <% if (user && user.role === 'super_admin') { %>
             <a href="/site-settings" class="mt-4 inline-flex items-center text-xs text-white/70 hover:text-white">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
