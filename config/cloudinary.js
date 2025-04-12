@@ -96,7 +96,21 @@ export const getImageUrl = (path, defaultImage = null) => {
   }
 
   // For local development, prepend with / if needed
-  return path.startsWith('/') ? path : `/${path}`;
+  const formattedPath = path.startsWith('/') ? path : `/${path}`;
+
+  // If the path includes a file extension, return it as is
+  if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(formattedPath)) {
+    return formattedPath;
+  }
+
+  // If no extension, try to add one based on the defaultImage
+  if (defaultImage && /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(defaultImage)) {
+    const extension = defaultImage.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)[0];
+    return `${formattedPath}${extension}`;
+  }
+
+  // If all else fails, return the path as is
+  return formattedPath;
 };
 
 // Export a function to add to res.locals for use in templates

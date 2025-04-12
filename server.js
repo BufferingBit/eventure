@@ -84,7 +84,22 @@ const processImagePath = (file, folder) => {
       return file.path;
     } else {
       // In development or if Cloudinary failed, we need to construct the path
-      return file.filename ? `/images/${folder}/${file.filename}` : `/images/${folder}/default-${folder.slice(0, -1)}.jpg`;
+      if (file.filename) {
+        return `/images/${folder}/${file.filename}`;
+      } else {
+        // Try to find an appropriate default image
+        const extensions = ['.jpg', '.jpeg', '.png', '.gif'];
+        for (const ext of extensions) {
+          const defaultPath = `/images/${folder}/default-${folder.slice(0, -1)}${ext}`;
+          try {
+            if (fs.existsSync(path.join(__dirname, 'public', defaultPath))) {
+              return defaultPath;
+            }
+          } catch (err) {}
+        }
+        // If no default image found, return a generic one
+        return `/images/${folder}/default-${folder.slice(0, -1)}.jpg`;
+      }
     }
   } catch (error) {
     console.error('Error processing image path:', error);
