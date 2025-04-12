@@ -52,8 +52,9 @@
               <% user.followed_colleges.forEach(college => { %>
                 <a href="/college/<%= college.id %>" class="group">
                   <div class="bg-gray-50 rounded-lg p-4 hover:shadow transition-all text-center">
-                    <img src="/images/college_logos/<%= college.name.toLowerCase().replace(/\s/g, '_') %>.png" alt="<%= college.name %>" class="w-full h-16 object-contain mb-2" onerror="this.src='/images/college_logos/default-college-logo.png'" />
-                    <p class="text-xs font-medium group-hover:text-blue-700"><%= college.name %></p>
+                    <img src="<%= getImageUrl(college.logo, `/images/college_logos/${college.name.toLowerCase().replace(/\s/g, '_')}.png`) %>"
+                  alt="<%= college.name %>" class="max-w-full max-h-full object-contain"
+                  onerror="this.src='/images/college_logos/default-college-logo.png'" />
                   </div>
                 </a>
               <% }) %>
