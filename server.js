@@ -78,12 +78,18 @@ const isSuperAdmin = (req, res, next) => {
 const processImagePath = (file, folder) => {
   if (!file) return null;
 
-  if (process.env.NODE_ENV === 'production') {
-    // In production, Cloudinary returns the full URL
-    return file.path;
-  } else {
-    // In development, we need to construct the path
-    return `/images/${folder}/${file.filename}`;
+  try {
+    if (process.env.NODE_ENV === 'production' && file.path && file.path.startsWith('http')) {
+      // In production, Cloudinary returns the full URL
+      return file.path;
+    } else {
+      // In development or if Cloudinary failed, we need to construct the path
+      return file.filename ? `/images/${folder}/${file.filename}` : `/images/${folder}/default-${folder.slice(0, -1)}.jpg`;
+    }
+  } catch (error) {
+    console.error('Error processing image path:', error);
+    // Return a default image path if there's an error
+    return `/images/${folder}/default-${folder.slice(0, -1)}.jpg`;
   }
 };
 
