@@ -1755,6 +1755,7 @@ app.get("/event/:id", async (req, res) => {
         e.date,
         e.time,
         e.venue,
+        e.banner
         e.role_tag,
         e.event_type,
         e.first_prize,
