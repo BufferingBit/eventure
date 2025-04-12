@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Site Settings | Eventure</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <%- include('../partials/header.ejs') %>
+
+  <main class="max-w-4xl mx-auto px-4 py-8">
+    <div class="bg-white rounded-xl shadow-sm p-8">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold">Site Settings</h1>
+        <a href="/super-admin" class="text-sm text-blue-600 hover:text-blue-800">Back to Dashboard</a>
+      </div>
+
+      <% if (success) { %>
+        <div class="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
+          Settings updated successfully!
+        </div>
+      <% } %>
+
+      <% if (error) { %>
+        <div class="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+          <%= error %>
+        </div>
+      <% } %>
+
+      <form action="/site-settings" method="POST" enctype="multipart/form-data" class="space-y-8">
+        <!-- Hero Image Section -->
+        <div class="space-y-4">
+          <h2 class="text-lg font-semibold border-b pb-2">Hero Banner</h2>
+          
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Current Hero Image</label>
+            <div class="relative h-48 rounded-lg overflow-hidden border border-gray-200">
+              <img 
+                src="<%= settings.hero_image || '/images/site/default-hero.jpg' %>" 
+                alt="Hero Image" 
+                class="w-full h-full object-cover"
+                id="hero-preview"
+              >
+            </div>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Upload New Hero Image</label>
+            <input 
+              type="file" 
+              name="hero_image" 
+              accept="image/*"
+              class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              id="hero-input"
+            >
+            <p class="mt-1 text-xs text-gray-500">Recommended size: 1920x400 pixels. Max file size: 2MB.</p>
+          </div>
+        </div>
+
+        <!-- Site Text Content -->
+        <div class="space-y-4">
+          <h2 class="text-lg font-semibold border-b pb-2">Site Content</h2>
+          
+          <div>
+            <label for="site_title" class="block text-sm font-medium text-gray-700 mb-1">Site Title</label>
+            <input 
+              type="text" 
+              id="site_title" 
+              name="site_title" 
+              value="<%= settings.site_title || 'Eventure' %>"
+              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+              required
+            >
+          </div>
+          
+          <div>
+            <label for="site_description" class="block text-sm font-medium text-gray-700 mb-1">Site Description</label>
+            <textarea 
+              id="site_description" 
+              name="site_description" 
+              rows="3"
+              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+              required
+            ><%= settings.site_description || 'Find exciting events happening across colleges and join the community' %></textarea>
+          </div>
+        </div>
+
+        <div class="pt-4">
+          <button 
+            type="submit"
+            class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    // Preview image before upload
+    document.getElementById('hero-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById('hero-preview').src = e.target.result;
+        }
+        reader.readAsDataURL(file);
+      }
+    });
+  </script>
+</body>
+</html>

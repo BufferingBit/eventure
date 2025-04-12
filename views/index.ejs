@@ -21,9 +21,20 @@
     <!-- Main Content Container -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Hero Section -->
-      <div class="bg-blue-600 rounded-xl p-8 mb-10 text-white">
-        <h1 class="text-3xl font-bold mb-2">Discover Events</h1>
-        <p class="text-blue-100 max-w-2xl">Find exciting events happening across colleges and join the community</p>
+      <div class="relative rounded-xl overflow-hidden mb-10">
+        <img src="<%= heroImage %>" alt="<%= siteTitle %>" class="w-full h-64 object-cover" onerror="this.src='/images/site/default-hero.jpg'">
+        <div class="absolute inset-0 bg-gradient-to-r from-blue-900/80 to-transparent flex flex-col justify-center p-8">
+          <h1 class="text-3xl font-bold mb-2 text-white"><%= siteTitle %></h1>
+          <p class="text-blue-100 max-w-2xl"><%= siteDescription %></p>
+          <% if (user && user.role === 'super_admin') { %>
+            <a href="/site-settings" class="mt-4 inline-flex items-center text-xs text-white/70 hover:text-white">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              Edit Banner
+            </a>
+          <% } %>
+        </div>
       </div>
 
       <!-- Colleges Section -->
@@ -32,7 +43,7 @@
           <h2 class="text-2xl font-bold">Colleges</h2>
           <a href="/colleges" class="text-sm font-medium text-blue-600 hover:text-blue-700">View all</a>
         </div>
-        
+
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <% colleges.forEach(college => { %>
             <a href="/college/<%= college.id %>"
@@ -55,12 +66,12 @@
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-2xl font-bold">Upcoming Events</h2>
           <div class="flex space-x-3">
-            <button onclick="filterEvents('all')" 
+            <button onclick="filterEvents('all')"
                     id="filter-all"
                     class="px-3 py-1 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors filter-btn">
               All
             </button>
-            <button onclick="filterEvents('this-week')" 
+            <button onclick="filterEvents('this-week')"
                     id="filter-this-week"
                     class="px-3 py-1 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors filter-btn">
               This Week
@@ -76,7 +87,7 @@
                 <div class="bg-gray-50 rounded-xl overflow-hidden shadow-sm hover:shadow-md border border-gray-100">
                   <div class="relative pt-[56.25%] overflow-hidden">
                     <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
-                      alt="<%= event.title %>" 
+                      alt="<%= event.title %>"
                       class="absolute top-0 left-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       onerror="this.src='/images/event_logos/default-event-image.jpeg'" />
                   </div>
@@ -112,7 +123,7 @@
             </svg>
             <h3 class="mt-4 text-lg font-medium text-gray-900">No events found</h3>
             <p class="mt-1 text-gray-500">No matching events found for "<%= searchTerm %>"</p>
-            <a href="/" 
+            <a href="/"
                class="inline-block mt-6 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
               Browse all events
             </a>

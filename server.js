@@ -1,5 +1,4 @@
 import express from "express";
-import multer from "multer";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import path from "path";
@@ -9,6 +8,12 @@ import passport from "./config/auth.js";
 import authRoutes, { isAuthenticated } from "./routes/auth.js";
 import fs from "fs";
 import bcrypt from "bcrypt";
+import dotenv from 'dotenv';
+import { createUploader, getImageUrl } from './config/cloudinary.js';
+import settingsService from './services/settings.js';
+
+// Load environment variables
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -16,22 +21,12 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 
-// Create uploads directory if it doesn't exist
-const uploadDir = path.join(__dirname, "public/images/profile_photos");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, "public/images/profile_photos"));
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + "-" + file.originalname);
-  },
-});
+// Create uploaders for different types of content
+const profileUploader = createUploader('profile_photos');
+const collegeLogoUploader = createUploader('college_logos');
+const clubLogoUploader = createUploader('club_logos');
+const eventImageUploader = createUploader('event_logos');
+const siteImageUploader = createUploader('site');
 
 // Admin middleware
 const isCollegeAdmin = (req, res, next) => {
@@ -79,7 +74,18 @@ const isSuperAdmin = (req, res, next) => {
 
 
 
-const upload = multer({ storage: storage });
+// Helper function to process image path based on environment
+const processImagePath = (file, folder) => {
+  if (!file) return null;
+
+  if (process.env.NODE_ENV === 'production') {
+    // In production, Cloudinary returns the full URL
+    return file.path;
+  } else {
+    // In development, we need to construct the path
+    return `/images/${folder}/${file.filename}`;
+  }
+};
 
 
 app.set("view engine", "ejs");
@@ -158,8 +164,11 @@ app.get('/', async (req, res) => {
     const searchTerm = req.query.search || '';
     const filter = req.query.filter || 'all';
 
+    // Get site settings
+    const settings = await settingsService.getAllSettings();
+
     const collegesQuery = `
-      SELECT id, name, location
+      SELECT id, name, location, logo
       FROM colleges
       WHERE LOWER(name) LIKE LOWER($1)
       ORDER BY name`;
@@ -212,7 +221,11 @@ app.get('/', async (req, res) => {
       events: events,
       searchTerm: searchTerm,
       filter: filter,
-      user: req.user
+      user: req.user,
+      settings: settings,
+      heroImage: settings.hero_image || '/images/site/default-hero.jpg',
+      siteTitle: settings.site_title || 'Eventure',
+      siteDescription: settings.site_description || 'Find exciting events happening across colleges and join the community'
     });
   } catch (error) {
     console.error('Error fetching data:', error);
@@ -220,6 +233,45 @@ app.get('/', async (req, res) => {
       message: 'Failed to load homepage',
       error: error
     });
+  }
+});
+
+// Site settings route - only accessible by super admin
+app.get('/site-settings', isSuperAdmin, async (req, res) => {
+  try {
+    const settings = await settingsService.getAllSettings();
+
+    res.render('pages/site-settings', {
+      user: req.user,
+      settings: settings,
+      error: null,
+      success: req.query.success === 'true'
+    });
+  } catch (error) {
+    console.error('Error loading site settings:', error);
+    res.status(500).send('Server error');
+  }
+});
+
+// Update site settings
+app.post('/site-settings', isSuperAdmin, siteImageUploader.single('hero_image'), async (req, res) => {
+  try {
+    const { site_title, site_description } = req.body;
+
+    // Update text settings
+    await settingsService.updateSetting('site_title', site_title);
+    await settingsService.updateSetting('site_description', site_description);
+
+    // Update hero image if provided
+    if (req.file) {
+      const heroImagePath = processImagePath(req.file, 'site');
+      await settingsService.updateSetting('hero_image', heroImagePath);
+    }
+
+    res.redirect('/site-settings?success=true');
+  } catch (error) {
+    console.error('Error updating site settings:', error);
+    res.status(500).send('Server error');
   }
 });
 
@@ -262,7 +314,7 @@ app.get('/college/new', isSuperAdmin, (req, res) => {
   });
 });
 
-app.post('/college/new', isSuperAdmin, upload.single('logo'), async (req, res) => {
+app.post('/college/new', isSuperAdmin, collegeLogoUploader.single('logo'), async (req, res) => {
   const client = await db.pool.connect();
   try {
       await client.query('BEGIN');
@@ -276,7 +328,7 @@ app.post('/college/new', isSuperAdmin, upload.single('logo'), async (req, res) =
           [
               name,
               location,
-              req.file ? `/images/college_logos/${req.file.filename}` : '/images/college_logos/default-college-logo.png'
+              req.file ? processImagePath(req.file, 'college_logos') : '/images/college_logos/default-college-logo.png'
           ]
       );
 
@@ -637,7 +689,7 @@ app.get("/profile/edit", isAuthenticated, async (req, res) => {
   }
 });
 
-app.post('/profile/update', isAuthenticated, upload.single('photo'), async (req, res) => {
+app.post('/profile/update', isAuthenticated, profileUploader.single('photo'), async (req, res) => {
   const client = await db.pool.connect();
   let currentClubId, currentCollegeId, userRole, skillsArray;
 
@@ -678,7 +730,7 @@ app.post('/profile/update', isAuthenticated, upload.single('photo'), async (req,
 
     let photoPath = req.user.photo;
     if (req.file) {
-      photoPath = `/images/profile_photos/${req.file.filename}`;
+      photoPath = processImagePath(req.file, 'profile_photos');
     }
 
     // Update user data
@@ -760,7 +812,7 @@ app.get('/club/new', isCollegeAdmin, async (req, res) => {
   }
 });
 
-app.post('/club/new', isCollegeAdmin, upload.single('logo'), async (req, res) => {
+app.post('/club/new', isCollegeAdmin, clubLogoUploader.single('logo'), async (req, res) => {
   const client = await db.pool.connect();
 
   try {
@@ -803,7 +855,7 @@ app.post('/club/new', isCollegeAdmin, upload.single('logo'), async (req, res) =>
 
     let logoPath = null;
     if (req.file) {
-      logoPath = `/images/club_logos/${req.file.filename}`;
+      logoPath = processImagePath(req.file, 'club_logos');
     }
 
     // Insert new club
@@ -884,7 +936,7 @@ app.get('/club/:id/edit', isCollegeAdmin, async (req, res) => {
   }
 });
 
-app.post('/club/:id/edit', isCollegeAdmin, upload.single('logo'), async (req, res) => {
+app.post('/club/:id/edit', isCollegeAdmin, clubLogoUploader.single('logo'), async (req, res) => {
   try {
       const clubId = parseInt(req.params.id);
       const { name, description, type } = req.body;
@@ -913,7 +965,7 @@ app.post('/club/:id/edit', isCollegeAdmin, upload.single('logo'), async (req, re
 
       let logoPath = undefined;
       if (req.file) {
-          logoPath = `/images/club_logos/${req.file.filename}`;
+          logoPath = processImagePath(req.file, 'club_logos');
       }
 
       // Update club
@@ -1711,7 +1763,7 @@ app.get('/college/:id/edit', isSuperAdmin, async (req, res) => {
     }
 });
 
-app.post('/college/:id/edit', isSuperAdmin, upload.single('logo'), async (req, res) => {
+app.post('/college/:id/edit', isSuperAdmin, collegeLogoUploader.single('logo'), async (req, res) => {
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
@@ -1731,7 +1783,7 @@ app.post('/college/:id/edit', isSuperAdmin, upload.single('logo'), async (req, r
                 WHERE id = $4
                 RETURNING *
             `;
-            updateValues = [name, location, `/images/college_logos/${req.file.filename}`, collegeId];
+            updateValues = [name, location, processImagePath(req.file, 'college_logos'), collegeId];
         } else {
             updateQuery = `
                 UPDATE colleges
