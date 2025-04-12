@@ -1280,7 +1280,7 @@ app.post("/event/new", isClubAdmin, async (req, res) => {
         first_prize || null,
         second_prize || null,
         third_prize || null,
-        faqs || null,
+        faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
       ]
     );
 
@@ -1568,7 +1568,7 @@ app.post("/event/:id/edit", isClubAdmin, async (req, res) => {
         first_prize || null,
         second_prize || null,
         third_prize || null,
-        faqs || null,
+        faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
         req.params.id,
         req.user.club_id,
       ]
@@ -1720,18 +1720,28 @@ app.post('/college/:id/edit', isSuperAdmin, upload.single('logo'), async (req, r
         const { name, location, admin_name, admin_email, admin_password } = req.body;
 
         // Update college details
-        const updateQuery = `
-            UPDATE colleges
-            SET name = $1,
-                location = $2
-                ${req.file ? ', logo = $3' : ''}
-            WHERE id = $${req.file ? '4' : '3'}
-            RETURNING *
-        `;
+        let updateQuery, updateValues;
 
-        const updateValues = req.file
-            ? [name, location, `/images/college_logos/${req.file.filename}`, collegeId]
-            : [name, location, collegeId];
+        if (req.file) {
+            updateQuery = `
+                UPDATE colleges
+                SET name = $1,
+                    location = $2,
+                    logo = $3
+                WHERE id = $4
+                RETURNING *
+            `;
+            updateValues = [name, location, `/images/college_logos/${req.file.filename}`, collegeId];
+        } else {
+            updateQuery = `
+                UPDATE colleges
+                SET name = $1,
+                    location = $2
+                WHERE id = $3
+                RETURNING *
+            `;
+            updateValues = [name, location, collegeId];
+        }
 
         await client.query(updateQuery, updateValues);
 
@@ -1744,17 +1754,26 @@ app.post('/college/:id/edit', isSuperAdmin, upload.single('logo'), async (req, r
 
             if (existingAdmin.rows[0]) {
                 // Update existing admin
-                const updateAdminQuery = `
-                    UPDATE users
-                    SET name = $1,
-                        email = $2
-                        ${admin_password ? ', password_hash = $3' : ''}
-                    WHERE college_id = $4 AND role = 'college_admin'
-                `;
+                let updateAdminQuery, updateAdminValues;
 
-                const updateAdminValues = admin_password
-                    ? [admin_name, admin_email, await bcrypt.hash(admin_password, 10), collegeId]
-                    : [admin_name, admin_email, collegeId];
+                if (admin_password) {
+                    updateAdminQuery = `
+                        UPDATE users
+                        SET name = $1,
+                            email = $2,
+                            password_hash = $3
+                        WHERE college_id = $4 AND role = 'college_admin'
+                    `;
+                    updateAdminValues = [admin_name, admin_email, await bcrypt.hash(admin_password, 10), collegeId];
+                } else {
+                    updateAdminQuery = `
+                        UPDATE users
+                        SET name = $1,
+                            email = $2
+                        WHERE college_id = $3 AND role = 'college_admin'
+                    `;
+                    updateAdminValues = [admin_name, admin_email, collegeId];
+                }
 
                 await client.query(updateAdminQuery, updateAdminValues);
             } else {

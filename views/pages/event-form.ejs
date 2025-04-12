@@ -100,15 +100,30 @@
             <div>
                 <label class="block text-sm font-medium text-gray-700">FAQs (one per line)</label>
                 <textarea name="faqs" rows="4"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"><%= event ? event.faqs : '' %></textarea>
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"><%
+                    let faqsText = '';
+                    if (event && event.faqs) {
+                        try {
+                            if (typeof event.faqs === 'string') {
+                                const faqsArray = JSON.parse(event.faqs);
+                                faqsText = faqsArray.map(faq => faq.question).join('\n');
+                            } else if (Array.isArray(event.faqs)) {
+                                faqsText = event.faqs.map(faq => faq.question).join('\n');
+                            }
+                        } catch (e) {
+                            console.error('Error parsing FAQs:', e);
+                            faqsText = event.faqs;
+                        }
+                    }
+                    %><%= faqsText %></textarea>
             </div>
 
             <div class="flex justify-end space-x-4">
-                <a href="/club-admin" 
+                <a href="/club-admin"
                     class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200">
                     Cancel
                 </a>
-                <button type="submit" 
+                <button type="submit"
                     class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
                     <%= mode === 'create' ? 'Create Event' : 'Save Changes' %>
                 </button>

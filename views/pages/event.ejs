@@ -31,7 +31,7 @@
 
     <main class="max-w-5xl mx-auto px-6 py-10">
       <div class="bg-white shadow-xl rounded-2xl overflow-hidden grid lg:grid-cols-2 gap-6">
-        
+
         <!-- Event Image -->
         <div class="h-80 lg:h-auto">
           <img src="/images/event_logos/<%= event.title.toLowerCase().replace(/\s/g, '_') %>.jpeg"
@@ -59,8 +59,8 @@
             </div>
 
             <% if (user) { %>
-              <button 
-                onclick="registerForEvent()" 
+              <button
+                onclick="registerForEvent()"
                 id="registerButton"
                 class="<%= isRegistered ? 'bg-green-600' : 'bg-blue-600' %> text-white font-semibold px-6 py-2 rounded-lg hover:opacity-90 transition-all duration-200 flex items-center gap-2"
                 <%= isRegistered ? 'disabled' : '' %>
@@ -79,26 +79,26 @@
       <!-- Tabs -->
       <div class="mt-10 border-b border-gray-200">
         <ul class="flex gap-8 text-lg font-medium">
-          <button 
-            onclick="switchTab('details')" 
+          <button
+            onclick="switchTab('details')"
             class="tab-btn pb-3 transition-all duration-200"
             data-tab="details">
             Details
           </button>
-          <button 
-            onclick="switchTab('dates')" 
+          <button
+            onclick="switchTab('dates')"
             class="tab-btn pb-3 transition-all duration-200"
             data-tab="dates">
             Dates & Deadlines
           </button>
-          <button 
-            onclick="switchTab('prizes')" 
+          <button
+            onclick="switchTab('prizes')"
             class="tab-btn pb-3 transition-all duration-200"
             data-tab="prizes">
             Prizes
           </button>
-          <button 
-            onclick="switchTab('faqs')" 
+          <button
+            onclick="switchTab('faqs')"
             class="tab-btn pb-3 transition-all duration-200"
             data-tab="faqs">
             FAQs
@@ -150,11 +150,26 @@
             <div class="bg-white p-4 rounded-lg shadow">
               <h3 class="font-semibold text-lg mb-2">Frequently Asked Questions</h3>
               <div class="space-y-4 text-gray-600">
-                <% if (event.faqs && event.faqs.length > 0) { %>
-                  <% event.faqs.forEach(faq => { %>
+                <%
+                  let faqsArray = [];
+                  try {
+                    if (event.faqs) {
+                      if (typeof event.faqs === 'string') {
+                        faqsArray = JSON.parse(event.faqs);
+                      } else if (Array.isArray(event.faqs)) {
+                        faqsArray = event.faqs;
+                      }
+                    }
+                  } catch (e) {
+                    console.error('Error parsing FAQs:', e);
+                  }
+                %>
+
+                <% if (faqsArray && faqsArray.length > 0) { %>
+                  <% faqsArray.forEach(faq => { %>
                     <div>
                       <h4 class="font-medium">Q: <%= faq.question %></h4>
-                      <p class="mt-1">A: <%= faq.answer %></p>
+                      <p class="mt-1">A: <%= faq.answer || 'No answer provided.' %></p>
                     </div>
                   <% }) %>
                 <% } else { %>
@@ -176,24 +191,24 @@
       document.querySelectorAll('.tab-content').forEach(section => {
         section.classList.add('hidden');
       });
-      
+
       // Show selected content section
       const selectedSection = document.getElementById(`${tabName}-section`);
       if (selectedSection) {
         selectedSection.classList.remove('hidden');
       }
-      
+
       // Update tab button styles
       document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
       });
-      
+
       const selectedTab = document.querySelector(`[data-tab="${tabName}"]`);
       if (selectedTab) {
         selectedTab.classList.add('active');
       }
     }
-    
+
     // Initialize the first tab as active when the page loads
     document.addEventListener('DOMContentLoaded', () => {
       switchTab('details');
@@ -203,10 +218,10 @@
     async function registerForEvent() {
       const button = document.getElementById('registerButton');
       const buttonText = document.getElementById('buttonText');
-      
+
       // Disable button during registration
       button.disabled = true;
-      
+
       try {
         const response = await fetch('/event/<%= event.id %>/register', {
           method: 'POST',
@@ -221,7 +236,7 @@
           button.classList.remove('bg-blue-600');
           button.classList.add('bg-green-600');
           buttonText.innerHTML = '✓ Registered';
-          
+
           // Add subtle animation
           button.style.transform = 'scale(0.95)';
           setTimeout(() => {
