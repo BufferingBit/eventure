@@ -2,7 +2,6 @@ import express from "express";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import path from "path";
-import db from "./db.js";
 import session from "express-session";
 import passport from "./config/auth.js";
 import authRoutes, { isAuthenticated } from "./routes/auth.js";
@@ -12,6 +11,8 @@ import dotenv from 'dotenv';
 import { createUploader, getImageUrl, addImageHelpers } from './config/cloudinary.js';
 import settingsService from './services/settings.js';
 import supabase from './db.js';
+import { createClient } from '@supabase/supabase-js';
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 // Load environment variables
 dotenv.config();
@@ -43,12 +44,20 @@ const isClubAdmin = async (req, res, next) => {
   }
 
   try {
-    const result = await db.query(
-      "SELECT club_id FROM users WHERE id = $1 AND role = $2",
-      [req.user.id, "club_admin"]
-    );
+    // Use Supabase to fetch the club_id for the user
+    const { data, error } = await supabase
+      .from('users')
+      .select('club_id')
+      .eq('id', req.user.id)
+      .eq('role', 'club_admin')
+      .single();
 
-    const clubId = result.rows[0]?.club_id;
+    if (error) {
+      console.error("Error fetching club_id for user:", error);
+      return res.status(500).send("Server error");
+    }
+
+    const clubId = data?.club_id;
 
     // Ensure clubId is present and is an integer
     if (!clubId || isNaN(clubId)) {
@@ -112,20 +121,19 @@ const processImagePath = (file, folder) => {
 // Function to check and create the banner column in events table if it doesn't exist
 const ensureEventBannerColumn = async () => {
   try {
-    // Check if banner column exists
-    const columnCheck = await db.query(
-      `SELECT EXISTS (
-        SELECT FROM information_schema.columns
-        WHERE table_schema = 'public'
-        AND table_name = 'events'
-        AND column_name = 'banner'
-      )`
-    );
+    // Step 1: Check if column exists
+    const { data: columnExists, error: checkError } = await supabase.rpc('check_column_exists', {
+      table_name: 'events',
+      column_name: 'banner'
+    });
 
-    // If column doesn't exist, create it
-    if (!columnCheck.rows[0].exists) {
+    if (checkError) throw checkError;
+
+    // Step 2: If not, alter the table
+    if (!columnExists) {
       console.log('Adding banner column to events table...');
-      await db.query('ALTER TABLE events ADD COLUMN banner VARCHAR(255)');
+      const { error: alterError } = await supabase.rpc('add_banner_column');
+      if (alterError) throw alterError;
       console.log('Banner column added successfully');
     }
   } catch (error) {
@@ -317,26 +325,28 @@ app.post('/site-settings', isSuperAdmin, siteImageUploader.single('hero_image'),
 app.get('/super-admin', isSuperAdmin, async (req, res) => {
     try {
         const searchTerm = req.query.search || '';
-        const searchQuery = `%${searchTerm}%`;
-
-        const collegesResult = await db.query(
-            `SELECT c.*, u.name as admin_name, u.email as admin_email
-             FROM colleges c
-             LEFT JOIN users u ON u.college_id = c.id AND u.role = 'college_admin'
-             WHERE LOWER(c.name) LIKE LOWER($1) OR LOWER(c.location) LIKE LOWER($1)
-             ORDER BY c.name ASC`,
-            [searchQuery]
-        );
-
+        // Fetch colleges and their admins
+        let { data: colleges, error } = await supabase
+          .from('colleges')
+          .select('*, users!users_college_id_fkey(name, email)')
+          .or(`name.ilike.%${searchTerm}%,location.ilike.%${searchTerm}%`)
+          .order('name');
+        if (error) throw error;
+        // Flatten admin info for rendering
+        colleges = (colleges || []).map(col => ({
+          ...col,
+          admin_name: (col.users || []).find(u => u.role === 'college_admin')?.name || '',
+          admin_email: (col.users || []).find(u => u.role === 'college_admin')?.email || ''
+        }));
         res.render('pages/super-admin', {
-            user: req.user,
-            colleges: collegesResult.rows,
-            error: null,
-            searchTerm
+          user: req.user,
+          colleges,
+          error: null,
+          searchTerm
         });
     } catch (error) {
         console.error('Error loading super admin dashboard:', error);
-        res.status(500).send("Server error");
+        res.status(500).send('Server error');
     }
 });
 
@@ -352,126 +362,93 @@ app.get('/college/new', isSuperAdmin, (req, res) => {
 });
 
 app.post('/college/new', isSuperAdmin, collegeLogoUploader.single('logo'), async (req, res) => {
-  const client = await db.pool.connect();
   try {
-      await client.query('BEGIN');
-
-      const { name, location, admin_name, admin_email, admin_password } = req.body;
-
-      const collegeResult = await client.query(
-          `INSERT INTO colleges (name, location, logo)
-           VALUES ($1, $2, $3)
-           RETURNING id`,
-          [
-              name,
-              location,
-              req.file ? processImagePath(req.file, 'college_logos') : '/images/college_logos/default-college-logo.png'
-          ]
-      );
-
-      const collegeId = collegeResult.rows[0].id;
-
-      // Create admin if details provided
-      if (admin_email && admin_name && admin_password) {
-          const hashedPassword = await bcrypt.hash(admin_password, 10);
-          await client.query(
-              `INSERT INTO users (name, email, password_hash, role, college_id)
-               VALUES ($1, $2, $3, $4, $5)`,
-              [admin_name, admin_email, hashedPassword, 'college_admin', collegeId]
-          );
-      }
-
-      await client.query('COMMIT');
-      res.redirect('/super-admin');
+    const { name, location, admin_name, admin_email, admin_password } = req.body;
+    const logo = req.file ? processImagePath(req.file, 'college_logos') : '/images/college_logos/default-college-logo.png';
+    // Insert college
+    const { data: college, error: collegeError } = await supabase
+      .from('colleges')
+      .insert([{ name, location, logo }])
+      .select('id')
+      .single();
+    if (collegeError) throw collegeError;
+    const collegeId = college.id;
+    // Create admin if details provided
+    if (admin_email && admin_name && admin_password) {
+      const hashedPassword = await bcrypt.hash(admin_password, 10);
+      const { error: userError } = await supabase
+        .from('users')
+        .insert([{ name: admin_name, email: admin_email, password_hash: hashedPassword, role: 'college_admin', college_id: collegeId }]);
+      if (userError) throw userError;
+    }
+    res.redirect('/super-admin');
   } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Error creating college:', error);
-      res.render('pages/college-form', {
-          user: req.user,
-          college: req.body,
-          admin: {
-              name: req.body.admin_name,
-              email: req.body.admin_email
-          },
-          mode: 'create',
-          error: 'Failed to create college: ' + error.message,
-          searchTerm: ''
-      });
-  } finally {
-      client.release();
+    console.error('Error creating college:', error);
+    res.render('pages/college-form', {
+      user: req.user,
+      college: req.body,
+      admin: { name: req.body.admin_name, email: req.body.admin_email },
+      mode: 'create',
+      error: 'Failed to create college: ' + error.message,
+      searchTerm: ''
+    });
   }
 });
 
 app.get('/college-admin/new', isSuperAdmin, async (req, res) => {
   try {
-      const collegesResult = await db.query(
-          'SELECT * FROM colleges ORDER BY name'
-      );
-
-      res.render('pages/college-admin-form', {
-          user: req.user,
-          colleges: collegesResult.rows,
-          error: null,
-          mode: 'create',
-          searchTerm: req.query.search || ''
-      });
+    const { data: colleges, error } = await supabase
+      .from('colleges')
+      .select('*')
+      .order('name');
+    if (error) throw error;
+    res.render('pages/college-admin-form', {
+      user: req.user,
+      colleges,
+      error: null,
+      mode: 'create',
+      searchTerm: req.query.search || ''
+    });
   } catch (error) {
-      console.error('Error loading college admin form:', error);
-      res.status(500).send('Server error');
+    console.error('Error loading college admin form:', error);
+    res.status(500).send('Server error');
   }
 });
 
 app.post('/college-admin/new', isSuperAdmin, async (req, res) => {
-  const client = await db.pool.connect();
   try {
-      await client.query('BEGIN');
-
-      const { name, email, password, college_id } = req.body;
-
-      // Basic validation
-      if (!name || !email || !password || !college_id) {
-          const collegesResult = await db.query('SELECT * FROM colleges ORDER BY name');
-          return res.render('pages/college-admin-form', {
-              user: req.user,
-              colleges: collegesResult.rows,
-              error: 'Please fill in all required fields',
-              mode: 'create',
-              searchTerm: ''
-          });
-      }
-
-      // Check if email already exists
-      const existingUser = await client.query(
-          'SELECT * FROM users WHERE email = $1',
-          [email]
-      );
-
-      if (existingUser.rows[0]) {
-          const collegesResult = await db.query('SELECT * FROM colleges ORDER BY name');
-          return res.render('pages/college-admin-form', {
-              user: req.user,
-              colleges: collegesResult.rows,
-              error: 'Email already exists',
-              mode: 'create',
-              searchTerm: ''
-          });
-      }
-
-      const hashedPassword = await bcrypt.hash(password, 10);
-      await client.query(
-          `INSERT INTO users (name, email, password_hash, role, college_id)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [name, email, hashedPassword, 'college_admin', college_id]
-      );
-
-      await client.query('COMMIT');
-      res.redirect('/super-admin');
+    const { name, email, password, college_id } = req.body;
+    if (!name || !email || !password || !college_id) {
+      const { data: colleges } = await supabase.from('colleges').select('*').order('name');
+      return res.render('pages/college-admin-form', {
+        user: req.user,
+        colleges,
+        error: 'Please fill in all required fields',
+        mode: 'create',
+        searchTerm: ''
+      });
+    }
+    // Check if email already exists
+    const { data: existingUser } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
+    if (existingUser) {
+      const { data: colleges } = await supabase.from('colleges').select('*').order('name');
+      return res.render('pages/college-admin-form', {
+        user: req.user,
+        colleges,
+        error: 'Email already exists',
+        mode: 'create',
+        searchTerm: ''
+      });
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const { error: insertError } = await supabase
+      .from('users')
+      .insert([{ name, email, password_hash: hashedPassword, role: 'college_admin', college_id }]);
+    if (insertError) throw insertError;
+    res.redirect('/super-admin');
   } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Error creating college admin:', error);
-      res.redirect('/college-admin/new?error=Failed to create college admin');
-  } finally {
-      client.release();
+    console.error('Error creating college admin:', error);
+    res.redirect('/college-admin/new?error=Failed to create college admin');
   }
 });
 
@@ -480,97 +457,85 @@ app.get("/college/:id", async (req, res) => {
     const collegeId = req.params.id;
     const userId = req.user?.id;
 
-    // Get follow status if user is logged in
     let isFollowing = false;
+
+    // Step 1: Check if the user is following the college
     if (userId) {
-      const followResult = await db.query(
-        "SELECT EXISTS(SELECT 1 FROM college_followers WHERE user_id = $1 AND college_id = $2)",
-        [userId, collegeId]
-      );
-      isFollowing = followResult.rows[0].exists;
+      const { data: followData, error: followError } = await supabase
+        .from("college_followers")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("college_id", collegeId)
+        .maybeSingle();
+
+      if (followError) throw followError;
+      isFollowing = !!followData;
     }
 
-    const collegeResult = await db.query(
-      "SELECT id, name, location, logo FROM colleges WHERE id = $1",
-      [collegeId]
-    );
-    const college = collegeResult.rows[0];
+    // Step 2: Get the college info
+    const { data: college, error: collegeError } = await supabase
+      .from("colleges")
+      .select("id, name, location, logo")
+      .eq("id", collegeId)
+      .maybeSingle();
 
-    if (!college) {
-      return res.status(404).send("College not found");
-    }
+    if (collegeError) throw collegeError;
+    if (!college) return res.status(404).send("College not found");
 
-    // Get followers count
-    const followersCountResult = await db.query(
-      "SELECT COUNT(*) FROM college_followers WHERE college_id = $1",
-      [collegeId]
-    );
-    const followersCount = parseInt(followersCountResult.rows[0].count);
-    console.log("followersCount:", followersCount);
+    // Step 3: Count followers
+    const { count: followersCount, error: countError } = await supabase
+      .from("college_followers")
+      .select("*", { count: "exact", head: true })
+      .eq("college_id", collegeId);
 
-    const clubsResult = await db.query(
-      `SELECT id, name, type, description, logo
-       FROM clubs
-       WHERE college_id = $1`,
-      [collegeId]
-    );
+    if (countError) throw countError;
 
-    // Log the raw results for debugging
-    console.log("Raw clubs data:", clubsResult.rows);
+    // Step 4: Get clubs by college
+    const { data: clubsData, error: clubsError } = await supabase
+      .from("clubs")
+      .select("id, name, type, description, logo")
+      .eq("college_id", collegeId);
 
-    // Normalize the type field and group clubs
+    if (clubsError) throw clubsError;
+
+    // Normalize and group clubs
+    const normalizeType = (type) => type?.toString().toUpperCase().trim();
     const clubs = {
-      CLUB: clubsResult.rows.filter(
-        (club) => club.type?.toString().toUpperCase().trim() === "CLUB"
-      ),
-      SOCIETY: clubsResult.rows.filter(
-        (club) => club.type?.toString().toUpperCase().trim() === "SOCIETY"
-      ),
-      FEST: clubsResult.rows.filter(
-        (club) => club.type?.toString().toUpperCase().trim() === "FEST"
-      ),
+      CLUB: clubsData.filter((c) => normalizeType(c.type) === "CLUB"),
+      SOCIETY: clubsData.filter((c) => normalizeType(c.type) === "SOCIETY"),
+      FEST: clubsData.filter((c) => normalizeType(c.type) === "FEST"),
     };
 
-    // Log the grouped results for debugging
-    console.log("Grouped clubs:", clubs);
+    // Step 5: Fetch upcoming events
+    const { data: eventsData, error: eventsError } = await supabase
+      .from("events")
+      .select(`
+        id, title, description, date, time, venue, role_tag, event_type, banner,
+        clubs ( name, type, colleges ( name ) )
+      `)
+      .gte("date", new Date().toISOString().split("T")[0])
+      .order("date", { ascending: true });
 
-    // Fetch upcoming events
-    const eventsResult = await db.query(
-      `
-      SELECT
-        e.id,
-        e.title,
-        e.description,
-        e.date,
-        e.time,
-        e.venue,
-        e.role_tag,
-        e.event_type,
-        e.banner,
-        c.name AS club_name,
-        c.type AS club_type,
-        col.name AS college_name
-      FROM events e
-      JOIN clubs c ON e.club_id = c.id
-      JOIN colleges col ON c.college_id = col.id
-      WHERE col.id = $1 AND e.date >= CURRENT_DATE
-      ORDER BY e.date ASC
-    `,
-      [collegeId]
-    );
+    if (eventsError) throw eventsError;
 
-    const events = eventsResult.rows.map((event) => ({
-      ...event,
-      formattedDate: formatDate(event.date),
-      formattedTime: formatTime(event.time),
-    }));
+    // Filter events by college ID
+    const events = eventsData
+      .filter((event) => event.clubs?.colleges?.id === collegeId)
+      .map((event) => ({
+        ...event,
+        club_name: event.clubs?.name,
+        club_type: event.clubs?.type,
+        college_name: event.clubs?.colleges?.name,
+        formattedDate: formatDate(event.date),
+        formattedTime: formatTime(event.time),
+      }));
 
     res.render("pages/college.ejs", {
       searchTerm: "",
       college,
       clubs,
       events,
-      clubCount: clubsResult.rows.length,
+      clubCount: clubsData.length,
       followersCount,
       isFollowing,
       activeTab: "events",
@@ -583,74 +548,78 @@ app.get("/college/:id", async (req, res) => {
 });
 
 
+
 app.get("/profile", isAuthenticated, async (req, res) => {
   try {
     const userId = req.user.id;
-    const userResult = await db.query(
-      `
-      SELECT
-        u.*,
-        c.name as college_name
-      FROM users u
-      LEFT JOIN colleges c ON u.college_id = c.id
-      WHERE u.id = $1
-    `,
-      [userId]
-    );
 
-    // Get followed colleges
-    const followedCollegesResult = await db.query(
-      `
-      SELECT c.*
-      FROM colleges c
-      JOIN college_followers cf ON c.id = cf.college_id
-      WHERE cf.user_id = $1
-      ORDER BY c.name
-    `,
-      [userId]
-    );
+    // 1. Get user info with college name
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("*, colleges(name)")
+      .eq("id", userId)
+      .maybeSingle();
 
-    const participatedEventsResult = await db.query(
-      `
-      SELECT
-        e.*,
-        c.name AS club_name,
-        col.name AS college_name
-      FROM events e
-      JOIN event_registrations er ON e.id = er.event_id
-      JOIN clubs c ON e.club_id = c.id
-      JOIN colleges col ON c.college_id = col.id
-      WHERE er.user_id = $1
-      ORDER BY e.date DESC
-    `,
-      [userId]
-    );
+    if (userError) throw userError;
 
-    const userWithFollowing = await db.query(
-      `SELECT u.*,
-              ARRAY_AGG(DISTINCT c.id) as followed_club_ids,
-              json_agg(DISTINCT jsonb_build_object(
-                  'id', c.id,
-                  'name', c.name,
-                  'logo', c.logo
-              )) FILTER (WHERE c.id IS NOT NULL) as following_clubs
-       FROM users u
-       LEFT JOIN club_followers cf ON u.id = cf.user_id
-       LEFT JOIN clubs c ON cf.club_id = c.id
-       WHERE u.id = $1
-       GROUP BY u.id`,
-      [userId]
-    );
+    // 2. Get followed colleges
+    const { data: followedColleges, error: followCollegesError } = await supabase
+      .from("college_followers")
+      .select("colleges(id, name, logo, location)")
+      .eq("user_id", userId)
+      .order("colleges.name", { ascending: true });
 
+    if (followCollegesError) throw followCollegesError;
+
+    // Extract only the college details
+    const followedCollegesList = followedColleges
+      .map((fc) => fc.colleges)
+      .filter(Boolean);
+
+    // 3. Get participated events with club and college info
+    const { data: events, error: eventsError } = await supabase
+      .from("event_registrations")
+      .select(`
+        events (
+          *,
+          clubs (
+            name,
+            colleges ( name )
+          )
+        )
+      `)
+      .eq("user_id", userId)
+      .order("events.date", { ascending: false });
+
+    if (eventsError) throw eventsError;
+
+    const participatedEvents = events.map(({ events: e }) => ({
+      ...e,
+      club_name: e.clubs?.name,
+      college_name: e.clubs?.colleges?.name,
+      formattedDate: formatDate(e.date),
+      formattedTime: formatTime(e.time),
+    }));
+
+    // 4. Get followed clubs
+    const { data: followedClubs, error: followClubsError } = await supabase
+      .from("club_followers")
+      .select("clubs(id, name, logo)")
+      .eq("user_id", userId);
+
+    if (followClubsError) throw followClubsError;
+
+    const followingClubs = followedClubs
+      .map((fc) => fc.clubs)
+      .filter(Boolean);
+
+    // Final merged user object
     const userData = {
-      ...userResult.rows[0],
-      followed_colleges: followedCollegesResult.rows,
-      participated_events: participatedEventsResult.rows.map((event) => ({
-        ...event,
-        formattedDate: formatDate(event.date),
-        formattedTime: formatTime(event.time),
-      })),
-      following_clubs: userWithFollowing.rows[0].following_clubs,
+      ...user,
+      college_name: user.colleges?.name || null,
+      followed_colleges: followedCollegesList,
+      participated_events: participatedEvents,
+      following_clubs: followingClubs,
     };
 
     res.render("pages/profile", {
@@ -664,6 +633,7 @@ app.get("/profile", isAuthenticated, async (req, res) => {
 });
 
 
+
 app.post("/college/:id/follow", isAuthenticated, async (req, res) => {
   const collegeId = req.params.id;
   const userId = req.user.id;
@@ -671,15 +641,19 @@ app.post("/college/:id/follow", isAuthenticated, async (req, res) => {
 
   try {
     if (action === "follow") {
-      await db.query(
-        "INSERT INTO college_followers (user_id, college_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        [userId, collegeId]
-      );
+      const { error } = await supabase
+        .from("college_followers")
+        .insert({ user_id: userId, college_id: collegeId }, { upsert: true, onConflict: ['user_id', 'college_id'] });
+
+      if (error) throw error;
     } else if (action === "unfollow") {
-      await db.query(
-        "DELETE FROM college_followers WHERE user_id = $1 AND college_id = $2",
-        [userId, collegeId]
-      );
+      const { error } = await supabase
+        .from("college_followers")
+        .delete()
+        .eq("user_id", userId)
+        .eq("college_id", collegeId);
+
+      if (error) throw error;
     }
 
     return res.json({ success: true });
@@ -689,36 +663,37 @@ app.post("/college/:id/follow", isAuthenticated, async (req, res) => {
   }
 });
 
+
 app.get("/profile/edit", isAuthenticated, async (req, res) => {
   try {
-    const userResult = await db.query(
-      `
-      SELECT
-        u.*,
-        c.name as college_name
-      FROM users u
-      LEFT JOIN colleges c ON u.college_id = c.id
-      WHERE u.id = $1
-    `,
-      [req.user.id]
-    );
+    const userId = req.user.id;
 
-    const collegesResult = await db.query(
-      "SELECT id, name FROM colleges ORDER BY name"
-    );
+    // Get user info with college name
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("*, colleges(name)")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (userError) throw userError;
+
+    // Get list of colleges
+    const { data: colleges, error: collegesError } = await supabase
+      .from("colleges")
+      .select("id, name")
+      .order("name", { ascending: true });
+
+    if (collegesError) throw collegesError;
 
     const userData = {
-      ...userResult.rows[0],
-      skills: userResult.rows[0].skills
-        ? typeof userResult.rows[0].skills === "string"
-          ? JSON.parse(userResult.rows[0].skills)
-          : userResult.rows[0].skills
-        : [],
+      ...user,
+      college_name: user.colleges?.name || null,
+      skills: typeof user.skills === "string" ? JSON.parse(user.skills) : (user.skills || []),
     };
 
     res.render("pages/edit-profile", {
       user: userData,
-      colleges: collegesResult.rows,
+      colleges,
       searchTerm: "",
     });
   } catch (error) {
@@ -727,43 +702,42 @@ app.get("/profile/edit", isAuthenticated, async (req, res) => {
   }
 });
 
+
 app.post('/profile/update', isAuthenticated, profileUploader.single('photo'), async (req, res) => {
-  const client = await db.pool.connect();
   let currentClubId, currentCollegeId, userRole, skillsArray;
 
   try {
-    await client.query('BEGIN');
-
     const { name, bio, college_id } = req.body;
     const skills = req.body['skills[]'] || [];
     skillsArray = Array.isArray(skills) ? skills : [skills];
     const userId = req.user.id;
 
     // Get current user data
-    const userResult = await client.query(
-      'SELECT role, club_id, college_id FROM users WHERE id = $1',
-      [userId]
-    );
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('role, club_id, college_id')
+      .eq('id', userId)
+      .single();
 
-    userRole = userResult.rows[0].role;
-    currentClubId = userResult.rows[0].club_id;
-    currentCollegeId = userResult.rows[0].college_id;
+    if (userError) throw userError;
+
+    userRole = userData.role;
+    currentClubId = userData.club_id;
+    currentCollegeId = userData.college_id;
 
     // Determine the final club_id and college_id based on role
     let finalClubId, finalCollegeId;
 
-    // Handle club_id
     if (userRole === 'club_admin') {
       finalClubId = currentClubId;
     } else {
       finalClubId = null;
     }
 
-    // Handle college_id
     if (userRole === 'college_admin') {
-      finalCollegeId = currentCollegeId; // Preserve existing college_id for college admins
+      finalCollegeId = currentCollegeId;
     } else {
-      finalCollegeId = null; // Ensure null for non-college admins
+      finalCollegeId = null;
     }
 
     let photoPath = req.user.photo;
@@ -772,38 +746,33 @@ app.post('/profile/update', isAuthenticated, profileUploader.single('photo'), as
     }
 
     // Update user data
-    await client.query(
-      `UPDATE users
-       SET name = $1,
-           bio = $2,
-           college_id = $3,
-           club_id = $4,
-           skills = $5::jsonb,
-           photo = $6,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $7`,
-      [
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
         name,
-        bio || null,
-        finalCollegeId,
-        finalClubId,
-        JSON.stringify(skillsArray),
-        photoPath,
-        userId
-      ]
-    );
+        bio: bio || null,
+        college_id: finalCollegeId,
+        club_id: finalClubId,
+        skills: skillsArray,
+        photo: photoPath,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
 
-    await client.query('COMMIT');
+    if (updateError) throw updateError;
+
     res.redirect('/profile');
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Profile update error:', error);
 
     // Re-render form with error
     try {
-      const collegesResult = await db.query(
-        "SELECT id, name FROM colleges ORDER BY name"
-      );
+      const { data: colleges, error: collegesError } = await supabase
+        .from('colleges')
+        .select('id, name')
+        .order('name', { ascending: true });
+
+      if (collegesError) throw collegesError;
 
       res.render('pages/edit-profile', {
         user: {
@@ -813,7 +782,7 @@ app.post('/profile/update', isAuthenticated, profileUploader.single('photo'), as
           college_id: currentCollegeId,
           skills: skillsArray
         },
-        colleges: collegesResult.rows,
+        colleges,
         error: 'Failed to update profile. Please try again.',
         searchTerm: ''
       });
@@ -821,53 +790,46 @@ app.post('/profile/update', isAuthenticated, profileUploader.single('photo'), as
       console.error('Error rendering profile edit page:', renderError);
       res.status(500).send('An error occurred while updating your profile');
     }
-  } finally {
-    client.release();
   }
 });
 
 
 // Create new club route
+// Create new club route
 app.get('/club/new', isCollegeAdmin, async (req, res) => {
   try {
-      // Get college details for the admin
-      const collegeResult = await db.query(
-          "SELECT * FROM colleges WHERE id = $1",
-          [req.user.college_id]
-      );
+    // Get college details for the admin
+    const { data: college, error: collegeError } = await supabase
+      .from('colleges')
+      .select('*')
+      .eq('id', req.user.college_id)
+      .single();
 
-      res.render('pages/club-form', {
-          user: req.user,
-          college: collegeResult.rows[0],
-          club: null,
-          mode: 'create',
-          error: null,
-          searchTerm: ''
-      });
+    if (collegeError) throw collegeError;
+
+    res.render('pages/club-form', {
+      user: req.user,
+      college,
+      club: null,
+      mode: 'create',
+      error: null,
+      searchTerm: ''
+    });
   } catch (error) {
-      console.error('Error loading club creation form:', error);
-      res.status(500).send("Server error");
+    console.error('Error loading club creation form:', error);
+    res.status(500).send("Server error");
   }
 });
 
 app.post('/club/new', isCollegeAdmin, clubLogoUploader.single('logo'), async (req, res) => {
-  const client = await db.pool.connect();
-
   try {
-    await client.query('BEGIN');
-
     const {
       name, description, type,
       adminName, adminEmail, adminPassword, adminPhone
     } = req.body;
 
-    // Debug log
-    console.log('Received club type:', type);
-    console.log('Request body:', req.body);
-
     // Normalize the type field
     const normalizedType = type?.toString().toUpperCase().trim();
-    console.log('Normalized type:', normalizedType);
 
     // Validate type
     if (!['CLUB', 'SOCIETY', 'FEST'].includes(normalizedType)) {
@@ -876,14 +838,17 @@ app.post('/club/new', isCollegeAdmin, clubLogoUploader.single('logo'), async (re
 
     // Basic validation
     if (!name || !type || !adminName || !adminEmail || !adminPassword) {
-      const collegeResult = await db.query(
-        "SELECT * FROM colleges WHERE id = $1",
-        [req.user.college_id]
-      );
+      const { data: college, error: collegeError } = await supabase
+        .from('colleges')
+        .select('*')
+        .eq('id', req.user.college_id)
+        .single();
+
+      if (collegeError) throw collegeError;
 
       return res.render('pages/club-form', {
         user: req.user,
-        college: collegeResult.rows[0],
+        college,
         club: req.body,
         mode: 'create',
         error: 'Please fill in all required fields',
@@ -897,136 +862,165 @@ app.post('/club/new', isCollegeAdmin, clubLogoUploader.single('logo'), async (re
     }
 
     // Insert new club
-    const clubResult = await client.query(
-      `INSERT INTO clubs (name, description, type, logo, college_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id`,
-      [name, description, normalizedType, logoPath, req.user.college_id]
-    );
+    const { data: club, error: clubError } = await supabase
+      .from('clubs')
+      .insert([{ 
+        name, 
+        description, 
+        type: normalizedType, 
+        logo: logoPath, 
+        college_id: req.user.college_id 
+      }])
+      .select('id')
+      .single();
+    
+    if (clubError) throw clubError;
 
-    const clubId = clubResult.rows[0].id;
+    const clubId = club.id;
 
-    // Create club admin user with password_hash instead of password
+    // Create club admin user
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
-    await client.query(
-      `INSERT INTO users (name, email, password_hash, role, club_id, phone)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [adminName, adminEmail, hashedPassword, 'club_admin', clubId, adminPhone]
-    );
+    const { error: userError } = await supabase
+      .from('users')
+      .insert([{ 
+        name: adminName, 
+        email: adminEmail, 
+        password_hash: hashedPassword, 
+        role: 'club_admin', 
+        club_id: clubId, 
+        phone: adminPhone 
+      }]);
+    
+    if (userError) throw userError;
 
-    await client.query('COMMIT');
     res.redirect('/college-admin');
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Error creating club:', error);
 
-    const collegeResult = await db.query(
-      "SELECT * FROM colleges WHERE id = $1",
-      [req.user.college_id]
-    );
+    const { data: college, error: collegeError } = await supabase
+      .from('colleges')
+      .select('*')
+      .eq('id', req.user.college_id)
+      .single();
+
+    if (collegeError) throw collegeError;
 
     return res.render('pages/club-form', {
       user: req.user,
-      college: collegeResult.rows[0],
+      college,
       club: req.body,
       mode: 'create',
       error: 'Error creating club. Please try again.',
       searchTerm: ''
     });
-  } finally {
-    client.release();
   }
 });
 
 // Edit club routes
 app.get('/club/:id/edit', isCollegeAdmin, async (req, res) => {
   try {
-      const clubId = parseInt(req.params.id);
+    const clubId = parseInt(req.params.id);
 
-      // Verify the club belongs to the admin's college
-      const clubResult = await db.query(
-          `SELECT c.*
-           FROM clubs c
-           WHERE c.id = $1 AND c.college_id = $2`,
-          [clubId, req.user.college_id]
-      );
+    // Verify the club belongs to the admin's college
+    const { data: club, error: clubError } = await supabase
+      .from('clubs')
+      .select('*')
+      .eq('id', clubId)
+      .eq('college_id', req.user.college_id)
+      .single();
 
-      if (!clubResult.rows[0]) {
-          return res.status(404).send("Club not found or unauthorized");
-      }
+    if (!club || clubError) {
+      return res.status(404).send("Club not found or unauthorized");
+    }
 
-      const collegeResult = await db.query(
-          "SELECT * FROM colleges WHERE id = $1",
-          [req.user.college_id]
-      );
+    const { data: college, error: collegeError } = await supabase
+      .from('colleges')
+      .select('*')
+      .eq('id', req.user.college_id)
+      .single();
 
-      res.render('pages/club-form', {
-          user: req.user,
-          college: collegeResult.rows[0],
-          club: clubResult.rows[0],
-          mode: 'edit',
-          error: null,
-          searchTerm: ''
-      });
+    if (collegeError) throw collegeError;
+
+    res.render('pages/club-form', {
+      user: req.user,
+      college,
+      club,
+      mode: 'edit',
+      error: null,
+      searchTerm: ''
+    });
   } catch (error) {
-      console.error('Error loading club edit form:', error);
-      res.status(500).send("Server error");
+    console.error('Error loading club edit form:', error);
+    res.status(500).send("Server error");
   }
 });
 
 app.post('/club/:id/edit', isCollegeAdmin, clubLogoUploader.single('logo'), async (req, res) => {
   try {
-      const clubId = parseInt(req.params.id);
-      const { name, description, type } = req.body;
+    const clubId = parseInt(req.params.id);
+    const { name, description, type } = req.body;
 
-      // Verify the club belongs to the admin's college
-      const checkClub = await db.query(
-          "SELECT id FROM clubs WHERE id = $1 AND college_id = $2",
-          [clubId, req.user.college_id]
-      );
+    // Verify the club belongs to the admin's college
+    const { data: club, error: checkError } = await supabase
+      .from('clubs')
+      .select('id')
+      .eq('id', clubId)
+      .eq('college_id', req.user.college_id)
+      .single();
 
-      if (!checkClub.rows[0]) {
-          return res.status(404).send("Club not found or unauthorized");
-      }
+    if (!club || checkError) {
+      return res.status(404).send("Club not found or unauthorized");
+    }
 
-      // Basic validation
-      if (!name || !type) {
-          return res.render('pages/club-form', {
-              user: req.user,
-              college: (await db.query("SELECT * FROM colleges WHERE id = $1", [req.user.college_id])).rows[0],
-              club: { id: clubId, ...req.body },
-              mode: 'edit',
-              error: 'Please fill in all required fields',
-              searchTerm: ''
-          });
-      }
+    // Basic validation
+    if (!name || !type) {
+      const { data: college, error: collegeError } = await supabase
+        .from('colleges')
+        .select('*')
+        .eq('id', req.user.college_id)
+        .single();
 
-      let logoPath = undefined;
-      if (req.file) {
-          logoPath = processImagePath(req.file, 'club_logos');
-      }
+      if (collegeError) throw collegeError;
 
-      // Update club
-      const updateQuery = `
-          UPDATE clubs
-          SET name = $1,
-              description = $2,
-              type = $3
-              ${logoPath ? ', logo = $4' : ''},
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = $${logoPath ? '5' : '4'} AND college_id = $${logoPath ? '6' : '5'}
-      `;
+      return res.render('pages/club-form', {
+        user: req.user,
+        college,
+        club: { id: clubId, ...req.body },
+        mode: 'edit',
+        error: 'Please fill in all required fields',
+        searchTerm: ''
+      });
+    }
 
-      const updateValues = logoPath
-          ? [name, description, type, logoPath, clubId, req.user.college_id]
-          : [name, description, type, clubId, req.user.college_id];
+    let logoPath = undefined;
+    if (req.file) {
+      logoPath = processImagePath(req.file, 'club_logos');
+    }
 
-      await db.query(updateQuery, updateValues);
+    // Update club
+    const updateData = {
+      name,
+      description,
+      type,
+      updated_at: new Date().toISOString()
+    };
 
-      res.redirect('/college-admin');
+    if (logoPath) {
+      updateData.logo = logoPath;
+    }
+
+    const { error: updateError } = await supabase
+      .from('clubs')
+      .update(updateData)
+      .eq('id', clubId)
+      .eq('college_id', req.user.college_id);
+
+    if (updateError) throw updateError;
+
+    res.redirect('/college-admin');
   } catch (error) {
-      console.error('Error updating club:', error);
-      res.status(500).send("Server error");
+    console.error('Error updating club:', error);
+    res.status(500).send("Server error");
   }
 });
 
@@ -1034,56 +1028,57 @@ app.get("/club/:id", async (req, res) => {
   try {
     const clubId = req.params.id;
     const userId = req.user?.id;
-    const searchTerm = req.query.search || ""; // Add this line
+    const searchTerm = req.query.search || "";
 
     // Get club details
-    const clubResult = await db.query(
-      "SELECT id, name, description, logo, college_id FROM clubs WHERE id = $1",
-      [clubId]
-    );
-    const club = clubResult.rows[0];
+    const { data: club, error: clubError } = await supabase
+      .from('clubs')
+      .select('id, name, description, logo, college_id')
+      .eq('id', clubId)
+      .single();
 
-    if (!club) {
+    if (!club || clubError) {
       return res.status(404).send("Club not found");
     }
 
     // Get follow status if user is logged in
     let isFollowing = false;
     if (userId) {
-      const followResult = await db.query(
-        "SELECT EXISTS(SELECT 1 FROM club_followers WHERE user_id = $1 AND club_id = $2)",
-        [userId, clubId]
-      );
-      isFollowing = followResult.rows[0].exists;
+      const { data: follow, error: followError } = await supabase
+        .from('club_followers')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('club_id', clubId)
+        .maybeSingle();
+
+      if (!followError) {
+        isFollowing = !!follow;
+      }
     }
 
     // Get followers count
-    const followersResult = await db.query(
-      "SELECT COUNT(*) FROM club_followers WHERE club_id = $1",
-      [clubId]
-    );
-    const followersCount = parseInt(followersResult.rows[0].count);
+    const { count: followersCount, error: countError } = await supabase
+      .from('club_followers')
+      .select('*', { count: 'exact', head: true })
+      .eq('club_id', clubId);
 
     // Get upcoming events
-    const eventsResult = await db.query(
-      `SELECT e.*,
-              TO_CHAR(e.date, 'Mon DD, YYYY') as "formattedDate",
-              TO_CHAR(e.time, 'HH24:MI') as "formattedTime"
-       FROM events e
-       WHERE e.club_id = $1
-       AND e.date >= CURRENT_DATE
-       ORDER BY e.date, e.time`,
-      [clubId]
-    );
+    const { data: events, error: eventsError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('club_id', clubId)
+      .gte('date', new Date().toISOString())
+      .order('date', { ascending: true })
+      .order('time', { ascending: true });
 
     res.render("pages/club.ejs", {
       club,
-      events: eventsResult.rows,
-      eventsCount: eventsResult.rows.length,
+      events: events || [],
+      eventsCount: events?.length || 0,
       isFollowing,
-      followersCount,
+      followersCount: followersCount || 0,
       user: req.user,
-      searchTerm, // Add this line
+      searchTerm,
     });
   } catch (err) {
     console.error(err);
@@ -1098,15 +1093,19 @@ app.post("/club/:id/follow", isAuthenticated, async (req, res) => {
 
   try {
     if (action === "follow") {
-      await db.query(
-        "INSERT INTO club_followers (user_id, club_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        [userId, clubId]
-      );
+      const { error } = await supabase
+        .from('club_followers')
+        .upsert({ user_id: userId, club_id: clubId }, { onConflict: ['user_id', 'club_id'] });
+      
+      if (error) throw error;
     } else if (action === "unfollow") {
-      await db.query(
-        "DELETE FROM club_followers WHERE user_id = $1 AND club_id = $2",
-        [userId, clubId]
-      );
+      const { error } = await supabase
+        .from('club_followers')
+        .delete()
+        .eq('user_id', userId)
+        .eq('club_id', clubId);
+      
+      if (error) throw error;
     }
 
     return res.json({ success: true });
@@ -1189,33 +1188,36 @@ app.post("/admin-login", async (req, res) => {
 app.get("/college-admin", isCollegeAdmin, async (req, res) => {
   try {
     // Fetch college data for the admin
-    const collegeResult = await db.query(
-      "SELECT * FROM colleges WHERE id = $1",
-      [req.user.college_id]
-    );
+    const { data: college, error: collegeError } = await supabase
+      .from('colleges')
+      .select('*')
+      .eq('id', req.user.college_id)
+      .single();
+
+    if (collegeError) throw collegeError;
 
     // Fetch clubs in the college
-    const clubsResult = await db.query(
-      "SELECT * FROM clubs WHERE college_id = $1",
-      [req.user.college_id]
-    );
+    const { data: clubs, error: clubsError } = await supabase
+      .from('clubs')
+      .select('*')
+      .eq('college_id', req.user.college_id);
+
+    if (clubsError) throw clubsError;
 
     // Fetch events in the college
-    const eventsResult = await db.query(
-      `
-            SELECT e.*, c.name as club_name
-            FROM events e
-            JOIN clubs c ON e.club_id = c.id
-            WHERE c.college_id = $1
-            ORDER BY e.date DESC`,
-      [req.user.college_id]
-    );
+    const { data: events, error: eventsError } = await supabase
+      .from('events')
+      .select('*, clubs!inner(name)')
+      .eq('clubs.college_id', req.user.college_id)
+      .order('date', { ascending: false });
+
+    if (eventsError) throw eventsError;
 
     res.render("pages/college-admin", {
       user: req.user,
-      college: collegeResult.rows[0],
-      clubs: clubsResult.rows,
-      events: eventsResult.rows.map((event) => ({
+      college,
+      clubs,
+      events: events.map((event) => ({
         ...event,
         formattedDate: formatDate(event.date),
         formattedTime: formatTime(event.time),
@@ -1232,39 +1234,41 @@ app.get("/college-admin", isCollegeAdmin, async (req, res) => {
 app.get("/club-admin", isClubAdmin, async (req, res) => {
   try {
     // Fetch club data for the admin
-    const clubResult = await db.query(
-      "SELECT c.*, col.name as college_name FROM clubs c JOIN colleges col ON c.college_id = col.id WHERE c.id = $1",
-      [req.user.club_id]
-    );
+    const { data: club, error: clubError } = await supabase
+      .from('clubs')
+      .select('*, colleges!inner(name)')
+      .eq('id', req.user.club_id)
+      .single();
+
+    if (clubError) throw clubError;
 
     // Fetch events for the club
-    const eventsResult = await db.query(
-      `
-            SELECT e.*,
-                   COUNT(er.user_id) as registration_count
-            FROM events e
-            LEFT JOIN event_registrations er ON e.id = er.event_id
-            WHERE e.club_id = $1
-            GROUP BY e.id
-            ORDER BY e.date DESC`,
-      [req.user.club_id]
-    );
+    const { data: events, error: eventsError } = await supabase
+      .from('events')
+      .select('*, event_registrations(count)')
+      .eq('club_id', req.user.club_id)
+      .order('date', { ascending: false });
+
+    if (eventsError) throw eventsError;
 
     // Fetch club followers count
-    const followersResult = await db.query(
-      "SELECT COUNT(*) FROM club_followers WHERE club_id = $1",
-      [req.user.club_id]
-    );
+    const { count: followersCount, error: followersError } = await supabase
+      .from('club_followers')
+      .select('*', { count: 'exact', head: true })
+      .eq('club_id', req.user.club_id);
+
+    if (followersError) throw followersError;
 
     res.render("pages/club-admin", {
       user: req.user,
-      club: clubResult.rows[0],
-      events: eventsResult.rows.map((event) => ({
+      club,
+      events: events.map((event) => ({
         ...event,
         formattedDate: formatDate(event.date),
         formattedTime: formatTime(event.time),
+        registration_count: event.event_registrations[0].count
       })),
-      followersCount: followersResult.rows[0].count,
+      followersCount: followersCount || 0,
       searchTerm: "",
     });
   } catch (error) {
@@ -1275,6 +1279,7 @@ app.get("/club-admin", isClubAdmin, async (req, res) => {
 
 // IMPORTANT: Place specific routes BEFORE dynamic routes
 // Create New Event - This should come FIRST
+// Create New Event
 app.get("/event/new", isClubAdmin, async (req, res) => {
   try {
     const searchTerm = req.query.search || "";
@@ -1282,28 +1287,31 @@ app.get("/event/new", isClubAdmin, async (req, res) => {
     if (!Number.isInteger(clubId)) {
       return res.status(400).send("Invalid club ID");
     }
-    console.log("Club ID from user:", req.user.club_id);
 
     // Get club details for the admin
-    const clubResult = await db.query(
-      "SELECT c.*, col.name as college_name FROM clubs c JOIN colleges col ON c.college_id = col.id WHERE c.id = $1",
-      [req.user.club_id]
-    );
+    const { data: club, error: clubError } = await supabase
+      .from('clubs')
+      .select('*, colleges!inner(name)')
+      .eq('id', req.user.club_id)
+      .single();
 
-    if (!clubResult.rows[0]) {
+    if (!club || clubError) {
       return res.status(404).send("Club not found");
     }
 
     // Get college details
-    const collegeResult = await db.query(
-      "SELECT * FROM colleges WHERE id = $1",
-      [clubResult.rows[0].college_id]
-    );
+    const { data: college, error: collegeError } = await supabase
+      .from('colleges')
+      .select('*')
+      .eq('id', club.college_id)
+      .single();
+
+    if (collegeError) throw collegeError;
 
     res.render("pages/event-form.ejs", {
       user: req.user,
-      club: clubResult.rows[0],
-      college: collegeResult.rows[0],
+      club,
+      college,
       event: null,
       mode: "create",
       method: "POST",
@@ -1335,14 +1343,17 @@ app.post("/event/new", isClubAdmin, eventImageUploader.single('banner'), async (
 
     // Basic validation
     if (!title || !description || !date || !time || !venue || !event_type) {
+      const { data: club, error: clubError } = await supabase
+        .from('clubs')
+        .select('*, colleges!inner(name)')
+        .eq('id', req.user.club_id)
+        .single();
+
+      if (clubError) throw clubError;
+
       return res.render("pages/event-form.ejs", {
         user: req.user,
-        club: (
-          await db.query(
-            "SELECT c.*, col.name as college_name FROM clubs c JOIN colleges col ON c.college_id = col.id WHERE c.id = $1",
-            [req.user.club_id]
-          )
-        ).rows[0],
+        club,
         event: req.body,
         mode: "create",
         searchTerm: "",
@@ -1356,30 +1367,27 @@ app.post("/event/new", isClubAdmin, eventImageUploader.single('banner'), async (
       bannerPath = processImagePath(req.file, 'event_logos');
     }
 
-    const result = await db.query(
-      `INSERT INTO events (
-                title, description, date, time, venue,
-                role_tag, event_type, club_id,
-                first_prize, second_prize, third_prize, faqs,
-                banner, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            RETURNING id`,
-      [
+    const { data: event, error: insertError } = await supabase
+      .from('events')
+      .insert([{
         title,
         description,
         date,
         time,
         venue,
-        role_tag || null,
+        role_tag: role_tag || null,
         event_type,
-        req.user.club_id,
-        first_prize || null,
-        second_prize || null,
-        third_prize || null,
-        faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
-        bannerPath
-      ]
-    );
+        club_id: req.user.club_id,
+        first_prize: first_prize || null,
+        second_prize: second_prize || null,
+        third_prize: third_prize || null,
+        faqs: faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
+        banner: bannerPath
+      }])
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
 
     res.redirect("/club-admin");
   } catch (error) {
@@ -1388,42 +1396,33 @@ app.post("/event/new", isClubAdmin, eventImageUploader.single('banner'), async (
   }
 });
 
-// 1. FIRST: Place specific routes
-app.get('/event/new', isClubAdmin, async (req, res) => {
-    // ... existing new event route code ...
-});
+// Event registration
+app.post("/event/register", isAuthenticated, async (req, res) => {
+  try {
+    const eventId = req.body.eventId;
+    const userId = req.user.id;
 
-app.post('/event/new', isClubAdmin, async (req, res) => {
-    // ... existing new event post handler code ...
-});
-
-// 2. THEN: Place registration routes
-app.post('/event/register', isAuthenticated, async (req, res) => {
-    try {
-        const eventId = req.body.eventId; // Get eventId from request body instead of params
-        const userId = req.user.id;
-
-        // Validate eventId
-        if (!eventId || isNaN(eventId)) {
-            return res.status(400).json({ success: false, message: "Invalid event ID" });
-        }
-
-        await db.query(
-            'INSERT INTO event_registrations (user_id, event_id) VALUES ($1, $2)',
-            [userId, eventId]
-        );
-
-        res.json({ success: true });
-    } catch (error) {
-        console.error(error);
-
-        // PostgreSQL error code for unique violation: 23505
-        if (error.code === '23505') {
-            return res.json({ success: false, message: "Already registered" });
-        }
-
-        res.status(500).json({ success: false, message: "Registration failed" });
+    // Validate eventId
+    if (!eventId || isNaN(eventId)) {
+      return res.status(400).json({ success: false, message: "Invalid event ID" });
     }
+
+    const { error } = await supabase
+      .from('event_registrations')
+      .insert({ user_id: userId, event_id: eventId });
+
+    if (error) {
+      if (error.code === '23505') { // Unique violation
+        return res.json({ success: false, message: "Already registered" });
+      }
+      throw error;
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Registration failed" });
+  }
 });
 
 app.post("/event/:id/register", isAuthenticated, async (req, res) => {
@@ -1435,20 +1434,20 @@ app.post("/event/:id/register", isAuthenticated, async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid event ID" });
     }
 
-    await db.query(
-      "INSERT INTO event_registrations (user_id, event_id) VALUES ($1, $2)",
-      [userId, eventId]
-    );
+    const { error } = await supabase
+      .from('event_registrations')
+      .insert({ user_id: userId, event_id: eventId });
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.json({ success: false, message: "Already registered" });
+      }
+      throw error;
+    }
 
     res.json({ success: true });
   } catch (error) {
     console.error(error);
-
-    // PostgreSQL error code for unique violation: 23505
-    if (error.code === "23505") {
-      return res.json({ success: false, message: "Already registered" });
-    }
-
     res.status(500).json({ success: false, message: "Registration failed" });
   }
 });
@@ -1457,35 +1456,34 @@ app.post("/event/:id/register", isAuthenticated, async (req, res) => {
 app.get("/event/:id/registrations/download", isClubAdmin, async (req, res) => {
   try {
     // Verify event ownership
-    const eventCheck = await db.query(
-      "SELECT id, title FROM events WHERE id = $1 AND club_id = $2",
-      [req.params.id, req.user.club_id]
-    );
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('id, title')
+      .eq('id', req.params.id)
+      .eq('club_id', req.user.club_id)
+      .single();
 
-    if (!eventCheck.rows[0]) {
+    if (!event || eventError) {
       return res.status(404).send("Event not found or unauthorized");
     }
 
     // Get registrations
-    const registrations = await db.query(
-      `SELECT
-                u.name, u.email, u.phone, u.college,
-                er.created_at as registration_date
-            FROM event_registrations er
-            JOIN users u ON er.user_id = u.id
-            WHERE er.event_id = $1
-            ORDER BY er.created_at DESC`,
-      [req.params.id]
-    );
+    const { data: registrations, error: regError } = await supabase
+      .from('event_registrations')
+      .select(`
+        created_at,
+        users!inner(name, email, phone, college)
+      `)
+      .eq('event_id', req.params.id)
+      .order('created_at', { ascending: false });
+
+    if (regError) throw regError;
 
     // Create CSV content
     const csvHeader = "Name,Email,Phone,College,Registration Date\n";
-    const csvRows = registrations.rows
-      .map(
-        (reg) =>
-          `${reg.name},${reg.email},${reg.phone || ""},${reg.college || ""},${
-            reg.registration_date
-          }`
+    const csvRows = registrations
+      .map(reg => 
+        `${reg.users.name},${reg.users.email},${reg.users.phone || ""},${reg.users.college || ""},${reg.created_at}`
       )
       .join("\n");
     const csvContent = csvHeader + csvRows;
@@ -1504,7 +1502,6 @@ app.get("/event/:id/registrations/download", isClubAdmin, async (req, res) => {
   }
 });
 
-
 app.get("/event/:id/registrations", isClubAdmin, async (req, res) => {
   const eventId = parseInt(req.params.id);
   if (isNaN(eventId)) {
@@ -1515,54 +1512,64 @@ app.get("/event/:id/registrations", isClubAdmin, async (req, res) => {
     const searchTerm = req.query.search || "";
 
     // Get event and verify it belongs to the admin's club
-    const eventResult = await db.query(
-      `SELECT e.*, c.name as club_name, c.college_id,
-              TO_CHAR(e.date, 'Mon DD, YYYY') as formatted_date,
-              TO_CHAR(e.time, 'HH24:MI') as formatted_time
-       FROM events e
-       JOIN clubs c ON e.club_id = c.id
-       WHERE e.id = $1 AND e.club_id = $2`,
-      [eventId, req.user.club_id]
-    );
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select(`
+        *,
+        clubs!inner(name, college_id)
+      `)
+      .eq('id', eventId)
+      .eq('club_id', req.user.club_id)
+      .single();
 
-    if (!eventResult.rows[0]) {
+    if (!event || eventError) {
       return res.status(404).send("Event not found or unauthorized");
     }
 
-    const collegeResult = await db.query(
-      "SELECT * FROM colleges WHERE id = $1",
-      [eventResult.rows[0].college_id]
-    );
+    const { data: college, error: collegeError } = await supabase
+      .from('colleges')
+      .select('*')
+      .eq('id', event.clubs.college_id)
+      .single();
 
-    const registrationsResult = await db.query(
-      `SELECT
-         er.id as registration_id,
-         er.created_at as registration_date,
-         u.id as user_id,
-         u.name as user_name,
-         u.email as user_email,
-         COALESCE(u.phone, '-') as user_phone,
-         COALESCE(col.name, '-') as user_college,
-         TO_CHAR(er.created_at, 'Mon DD, YYYY HH24:MI') as formatted_registration_date
-       FROM event_registrations er
-       JOIN users u ON er.user_id = u.id
-       LEFT JOIN colleges col ON u.college_id = col.id
-       WHERE er.event_id = $1
-       ORDER BY er.created_at DESC`,
-      [eventId]
-    );
+    if (collegeError) throw collegeError;
 
-    const countResult = await db.query(
-      "SELECT COUNT(*) FROM event_registrations WHERE event_id = $1",
-      [eventId]
-    );
+    const { data: registrations, error: regError } = await supabase
+      .from('event_registrations')
+      .select(`
+        id,
+        created_at,
+        users!inner(id, name, email, phone, colleges!left(name))
+      `)
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false });
+
+    if (regError) throw regError;
+
+    const { count: registrationCount, error: countError } = await supabase
+      .from('event_registrations')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_id', eventId);
 
     res.render("pages/event-registrations.ejs", {
       user: req.user,
-      event: eventResult.rows[0],
-      college: collegeResult.rows[0],
-      registrations: registrationsResult.rows,
-      registrationCount: parseInt(countResult.rows[0].count),
+      event: {
+        ...event,
+        formattedDate: formatDate(event.date),
+        formattedTime: formatTime(event.time)
+      },
+      college,
+      registrations: registrations.map(reg => ({
+        registration_id: reg.id,
+        registration_date: reg.created_at,
+        user_id: reg.users.id,
+        user_name: reg.users.name,
+        user_email: reg.users.email,
+        user_phone: reg.users.phone || '-',
+        user_college: reg.users.colleges?.name || '-',
+        formatted_registration_date: formatDateTime(reg.created_at)
+      })),
+      registrationCount: registrationCount || 0,
       method: "GET",
       mode: "view",
       searchTerm: searchTerm,
@@ -1575,8 +1582,6 @@ app.get("/event/:id/registrations", isClubAdmin, async (req, res) => {
   }
 });
 
-
-
 app.get("/event/:id/edit", isClubAdmin, async (req, res) => {
   if (isNaN(req.params.id)) {
     return res.status(404).send("Invalid event ID");
@@ -1585,27 +1590,31 @@ app.get("/event/:id/edit", isClubAdmin, async (req, res) => {
   try {
     const eventId = parseInt(req.params.id);
     // Verify the event belongs to the admin's club
-    const eventResult = await db.query(
-      `SELECT * FROM events
-            WHERE id = $1 AND club_id = $2`,
-      [eventId, req.user.club_id]
-    );
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', eventId)
+      .eq('club_id', req.user.club_id)
+      .single();
 
-    if (!eventResult.rows[0]) {
+    if (!event || eventError) {
       return res.status(404).send("Event not found or unauthorized");
     }
 
-    const clubResult = await db.query(
-      "SELECT c.*, col.name as college_name FROM clubs c JOIN colleges col ON c.college_id = col.id WHERE c.id = $1",
-      [req.user.club_id]
-    );
+    const { data: club, error: clubError } = await supabase
+      .from('clubs')
+      .select('*, colleges!inner(name)')
+      .eq('id', req.user.club_id)
+      .single();
+
+    if (clubError) throw clubError;
 
     res.render("pages/event-form", {
       user: req.user,
-      club: clubResult.rows[0],
-      event: eventResult.rows[0],
+      club,
+      event,
       mode: "edit",
-      searchTerm: "", // Add this line
+      searchTerm: "",
     });
   } catch (error) {
     console.error(error);
@@ -1630,12 +1639,14 @@ app.post("/event/:id/edit", isClubAdmin, eventImageUploader.single('banner'), as
     } = req.body;
 
     // First verify if the event exists and belongs to the admin's club
-    const checkEvent = await db.query(
-      "SELECT id FROM events WHERE id = $1 AND club_id = $2",
-      [req.params.id, req.user.club_id]
-    );
+    const { data: event, error: checkError } = await supabase
+      .from('events')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('club_id', req.user.club_id)
+      .single();
 
-    if (!checkEvent.rows[0]) {
+    if (!event || checkError) {
       return res.status(404).send("Event not found or unauthorized");
     }
 
@@ -1645,78 +1656,33 @@ app.post("/event/:id/edit", isClubAdmin, eventImageUploader.single('banner'), as
       bannerPath = processImagePath(req.file, 'event_logos');
     }
 
-    // Prepare the update query
-    let updateQuery, updateValues;
+    // Prepare the update data
+    const updateData = {
+      title,
+      description,
+      date,
+      time,
+      venue,
+      role_tag: role_tag || null,
+      event_type,
+      first_prize: first_prize || null,
+      second_prize: second_prize || null,
+      third_prize: third_prize || null,
+      faqs: faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
+      updated_at: new Date().toISOString()
+    };
 
     if (bannerPath) {
-      updateQuery = `
-        UPDATE events
-        SET title = $1,
-            description = $2,
-            date = $3,
-            time = $4,
-            venue = $5,
-            role_tag = $6,
-            event_type = $7,
-            first_prize = $8,
-            second_prize = $9,
-            third_prize = $10,
-            faqs = $11,
-            banner = $12
-        WHERE id = $13 AND club_id = $14`;
-
-      updateValues = [
-        title,
-        description,
-        date,
-        time,
-        venue,
-        role_tag || null,
-        event_type,
-        first_prize || null,
-        second_prize || null,
-        third_prize || null,
-        faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
-        bannerPath,
-        req.params.id,
-        req.user.club_id,
-      ];
-    } else {
-      updateQuery = `
-        UPDATE events
-        SET title = $1,
-            description = $2,
-            date = $3,
-            time = $4,
-            venue = $5,
-            role_tag = $6,
-            event_type = $7,
-            first_prize = $8,
-            second_prize = $9,
-            third_prize = $10,
-            faqs = $11
-        WHERE id = $12 AND club_id = $13`;
-
-      updateValues = [
-        title,
-        description,
-        date,
-        time,
-        venue,
-        role_tag || null,
-        event_type,
-        first_prize || null,
-        second_prize || null,
-        third_prize || null,
-        faqs ? JSON.stringify(faqs.split('\n').filter(line => line.trim()).map(line => ({ question: line, answer: '' }))) : null,
-        req.params.id,
-        req.user.club_id,
-      ];
+      updateData.banner = bannerPath;
     }
 
-    // Update the event
-    const result = await db.query(updateQuery, updateValues
-    );
+    const { error: updateError } = await supabase
+      .from('events')
+      .update(updateData)
+      .eq('id', req.params.id)
+      .eq('club_id', req.user.club_id);
+
+    if (updateError) throw updateError;
 
     res.redirect("/club-admin");
   } catch (error) {
@@ -1735,52 +1701,42 @@ app.get("/event/:id", async (req, res) => {
   }
 
   try {
-    const eventResult = await db.query(
-      `SELECT
-        e.id,
-        e.title,
-        e.description,
-        e.date,
-        e.time,
-        e.venue,
-        e.banner,
-        e.role_tag,
-        e.event_type,
-        e.first_prize,
-        e.second_prize,
-        e.third_prize,
-        e.faqs,
-        c.name AS club_name,
-        col.name AS college_name
-      FROM events e
-      JOIN clubs c ON e.club_id = c.id
-      JOIN colleges col ON c.college_id = col.id
-      WHERE e.id = $1`,
-      [eventId]
-    );
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select(`
+        *,
+        clubs!inner(name, colleges!inner(name))
+      `)
+      .eq('id', eventId)
+      .single();
 
     let isRegistered = false;
     if (req.user) {
-      const registrationResult = await db.query(
-        "SELECT 1 FROM event_registrations WHERE user_id = $1 AND event_id = $2",
-        [req.user.id, eventId]
-      );
-      isRegistered = registrationResult.rows.length > 0;
+      const { data: registration, error: regError } = await supabase
+        .from('event_registrations')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .eq('event_id', eventId)
+        .maybeSingle();
+
+      if (!regError) {
+        isRegistered = !!registration;
+      }
     }
 
-    if (!eventResult.rows[0]) {
+    if (!event || eventError) {
       return res.status(404).send("Event not found");
     }
 
-    const event = eventResult.rows[0];
     const formattedEvent = {
       ...event,
       name: event.title,
       formattedDate: formatDate(event.date),
       formattedTime: formatTime(event.time),
+      club_name: event.clubs.name,
+      college_name: event.clubs.colleges.name
     };
-    // Debugging log removed
-    // console.log(formattedEvent);
+
     res.render("pages/event.ejs", {
       event: formattedEvent,
       searchTerm,
@@ -1794,192 +1750,219 @@ app.get("/event/:id", async (req, res) => {
 });
 
 
-
+// Delete college route
 // Delete college route
 app.delete('/college/:id', isSuperAdmin, async (req, res) => {
-    const client = await db.pool.connect();
-    try {
-        await client.query('BEGIN');
+  try {
+    const collegeId = req.params.id;
 
-        const collegeId = req.params.id;
+    // Delete related records first
+    await supabase
+      .from('college_followers')
+      .delete()
+      .eq('college_id', collegeId);
 
-        // Delete related records first
-        await client.query('DELETE FROM college_followers WHERE college_id = $1', [collegeId]);
-        await client.query('DELETE FROM event_registrations WHERE event_id IN (SELECT e.id FROM events e JOIN clubs c ON e.club_id = c.id WHERE c.college_id = $1)', [collegeId]);
-        await client.query('DELETE FROM events WHERE club_id IN (SELECT id FROM clubs WHERE college_id = $1)', [collegeId]);
-        await client.query('DELETE FROM club_followers WHERE club_id IN (SELECT id FROM clubs WHERE college_id = $1)', [collegeId]);
-        await client.query('DELETE FROM users WHERE college_id = $1 OR club_id IN (SELECT id FROM clubs WHERE college_id = $1)', [collegeId]);
-        await client.query('DELETE FROM clubs WHERE college_id = $1', [collegeId]);
-        await client.query('DELETE FROM colleges WHERE id = $1', [collegeId]);
+    // Get all clubs in this college
+    const { data: clubs, error: clubsError } = await supabase
+      .from('clubs')
+      .select('id')
+      .eq('college_id', collegeId);
 
-        await client.query('COMMIT');
-        res.json({ success: true });
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Error deleting college:', error);
-        res.status(500).json({ success: false, error: 'Failed to delete college' });
-    } finally {
-        client.release();
+    if (!clubsError && clubs.length > 0) {
+      const clubIds = clubs.map(c => c.id);
+
+      // Delete event registrations for events in these clubs
+      await supabase
+        .from('event_registrations')
+        .delete()
+        .in('event_id', 
+          (await supabase
+            .from('events')
+            .select('id')
+            .in('club_id', clubIds)
+          ).data.map(e => e.id)
+        );
+
+      // Delete events in these clubs
+      await supabase
+        .from('events')
+        .delete()
+        .in('club_id', clubIds);
+
+      // Delete club followers for these clubs
+      await supabase
+        .from('club_followers')
+        .delete()
+        .in('club_id', clubIds);
+
+      // Delete users associated with these clubs or the college
+      await supabase
+        .from('users')
+        .delete()
+        .or(`college_id.eq.${collegeId},club_id.in.(${clubIds.join(',')})`);
+
+      // Delete the clubs
+      await supabase
+        .from('clubs')
+        .delete()
+        .eq('college_id', collegeId);
     }
+
+    // Finally delete the college
+    const { error: deleteError } = await supabase
+      .from('colleges')
+      .delete()
+      .eq('id', collegeId);
+
+    if (deleteError) throw deleteError;
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting college:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete college' });
+  }
 });
 
 // Edit college route
 app.get('/college/:id/edit', isSuperAdmin, async (req, res) => {
-    try {
-        const collegeId = req.params.id;
-        const collegeResult = await db.query(
-            'SELECT * FROM colleges WHERE id = $1',
-            [collegeId]
-        );
+  try {
+    const collegeId = req.params.id;
+    const { data: college, error: collegeError } = await supabase
+      .from('colleges')
+      .select('*')
+      .eq('id', collegeId)
+      .single();
 
-        const adminResult = await db.query(
-            `SELECT * FROM users
-             WHERE college_id = $1 AND role = 'college_admin'`,
-            [collegeId]
-        );
-
-        if (!collegeResult.rows[0]) {
-            return res.status(404).send('College not found');
-        }
-
-        res.render('pages/college-form', {
-            user: req.user,
-            college: collegeResult.rows[0],
-            admin: adminResult.rows[0] || null,
-            mode: 'edit',
-            error: null,
-            searchTerm: ''
-        });
-    } catch (error) {
-        console.error('Error loading college edit form:', error);
-        res.status(500).send('Server error');
+    if (!college || collegeError) {
+      return res.status(404).send('College not found');
     }
+
+    const { data: admin, error: adminError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('college_id', collegeId)
+      .eq('role', 'college_admin')
+      .maybeSingle();
+
+    res.render('pages/college-form', {
+      user: req.user,
+      college,
+      admin: admin || null,
+      mode: 'edit',
+      error: null,
+      searchTerm: ''
+    });
+  } catch (error) {
+    console.error('Error loading college edit form:', error);
+    res.status(500).send('Server error');
+  }
 });
 
 app.post('/college/:id/edit', isSuperAdmin, collegeLogoUploader.single('logo'), async (req, res) => {
-    const client = await db.pool.connect();
-    try {
-        await client.query('BEGIN');
+  try {
+    const collegeId = req.params.id;
+    const { name, location, admin_name, admin_email, admin_password } = req.body;
 
-        const collegeId = req.params.id;
-        const { name, location, admin_name, admin_email, admin_password } = req.body;
+    // Update college details
+    const updateData = {
+      name,
+      location,
+      updated_at: new Date().toISOString()
+    };
 
-        // Update college details
-        let updateQuery, updateValues;
-
-        if (req.file) {
-            updateQuery = `
-                UPDATE colleges
-                SET name = $1,
-                    location = $2,
-                    logo = $3
-                WHERE id = $4
-                RETURNING *
-            `;
-            updateValues = [name, location, processImagePath(req.file, 'college_logos'), collegeId];
-        } else {
-            updateQuery = `
-                UPDATE colleges
-                SET name = $1,
-                    location = $2
-                WHERE id = $3
-                RETURNING *
-            `;
-            updateValues = [name, location, collegeId];
-        }
-
-        await client.query(updateQuery, updateValues);
-
-        // Handle admin updates
-        if (admin_email) {
-            const existingAdmin = await client.query(
-                'SELECT * FROM users WHERE college_id = $1 AND role = 'college_admin'',
-                [collegeId]
-            );
-
-            if (existingAdmin.rows[0]) {
-                // Update existing admin
-                let updateAdminQuery, updateAdminValues;
-
-                if (admin_password) {
-                    updateAdminQuery = `
-                        UPDATE users
-                        SET name = $1,
-                            email = $2,
-                            password_hash = $3
-                        WHERE college_id = $4 AND role = 'college_admin'
-                    `;
-                    updateAdminValues = [admin_name, admin_email, await bcrypt.hash(admin_password, 10), collegeId];
-                } else {
-                    updateAdminQuery = `
-                        UPDATE users
-                        SET name = $1,
-                            email = $2
-                        WHERE college_id = $3 AND role = 'college_admin'
-                    `;
-                    updateAdminValues = [admin_name, admin_email, collegeId];
-                }
-
-                await client.query(updateAdminQuery, updateAdminValues);
-            } else {
-                // Create new admin if email is provided
-                const hashedPassword = await bcrypt.hash(admin_password || 'defaultPassword123', 10);
-                await client.query(
-                    `INSERT INTO users (name, email, password_hash, role, college_id)
-                     VALUES ($1, $2, $3, $4, $5)`,
-                    [admin_name, admin_email, hashedPassword, 'college_admin', collegeId]
-                );
-            }
-        }
-
-        await client.query('COMMIT');
-        res.redirect('/super-admin');
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Error updating college:', error);
-        res.render('pages/college-form', {
-            user: req.user,
-            college: req.body,
-            admin: {
-                name: req.body.admin_name,
-                email: req.body.admin_email
-            },
-            mode: 'edit',
-            error: 'Failed to update college: ' + error.message,
-            searchTerm: ''
-        });
-    } finally {
-        client.release();
+    if (req.file) {
+      updateData.logo = processImagePath(req.file, 'college_logos');
     }
+
+    const { error: updateError } = await supabase
+      .from('colleges')
+      .update(updateData)
+      .eq('id', collegeId);
+
+    if (updateError) throw updateError;
+
+    // Handle admin updates
+    if (admin_email) {
+      const { data: existingAdmin, error: adminError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('college_id', collegeId)
+        .eq('role', 'college_admin')
+        .maybeSingle();
+
+      if (existingAdmin && !adminError) {
+        // Update existing admin
+        const adminUpdateData = {
+          name: admin_name,
+          email: admin_email
+        };
+
+        if (admin_password) {
+          adminUpdateData.password_hash = await bcrypt.hash(admin_password, 10);
+        }
+
+        const { error: updateAdminError } = await supabase
+          .from('users')
+          .update(adminUpdateData)
+          .eq('id', existingAdmin.id);
+
+        if (updateAdminError) throw updateAdminError;
+      } else {
+        // Create new admin if email is provided
+        const hashedPassword = await bcrypt.hash(admin_password || 'defaultPassword123', 10);
+        const { error: createError } = await supabase
+          .from('users')
+          .insert([{
+            name: admin_name,
+            email: admin_email,
+            password_hash: hashedPassword,
+            role: 'college_admin',
+            college_id: collegeId
+          }]);
+
+        if (createError) throw createError;
+      }
+    }
+
+    res.redirect('/super-admin');
+  } catch (error) {
+    console.error('Error updating college:', error);
+    res.render('pages/college-form', {
+      user: req.user,
+      college: req.body,
+      admin: {
+        name: req.body.admin_name,
+        email: req.body.admin_email
+      },
+      mode: 'edit',
+      error: 'Failed to update college: ' + error.message,
+      searchTerm: ''
+    });
+  }
 });
 
 app.get('/colleges', async (req, res) => {
   try {
     const searchTerm = req.query.search || '';
 
-    const query = `
-      SELECT
-        id,
-        name,
-        location
-      FROM colleges
-      WHERE LOWER(name) LIKE LOWER($1)
-        OR LOWER(location) LIKE LOWER($1)
-      ORDER BY name ASC
-    `;
+    const { data: colleges, error } = await supabase
+      .from('colleges')
+      .select('id, name, location')
+      .or(`name.ilike.%${searchTerm}%,location.ilike.%${searchTerm}%`)
+      .order('name', { ascending: true });
 
-    const result = await db.query(query, [`%${searchTerm}%`]);
+    if (error) throw error;
 
     res.render('pages/colleges', {
-      colleges: result.rows,
-      searchTerm: searchTerm,
+      colleges,
+      searchTerm,
       user: req.user
     });
   } catch (error) {
     console.error('Error fetching colleges:', error);
     res.status(500).render('error', {
       message: 'Failed to load colleges page',
-      error: error
+      error
     });
   }
 });
