@@ -11,6 +11,7 @@ import bcrypt from "bcrypt";
 import dotenv from 'dotenv';
 import { createUploader, getImageUrl, addImageHelpers } from './config/cloudinary.js';
 import settingsService from './services/settings.js';
+import supabase from './db.js';
 
 // Load environment variables
 dotenv.config();
@@ -212,61 +213,48 @@ app.get('/', async (req, res) => {
     const searchTerm = req.query.search || '';
     const filter = req.query.filter || 'all';
 
-    // Get site settings
+    // Get site settings (assuming settingsService is already refactored)
     const settings = await settingsService.getAllSettings();
 
-    const collegesQuery = `
-      SELECT id, name, location, logo
-      FROM colleges
-      WHERE LOWER(name) LIKE LOWER($1)
-      ORDER BY name`;
-    const collegesResult = await db.query(collegesQuery, [`%${searchTerm}%`]);
+    // Fetch colleges
+    let { data: colleges, error: collegesError } = await supabase
+      .from('colleges')
+      .select('id, name, location, logo')
+      .ilike('name', `%${searchTerm}%`)
+      .order('name');
+    if (collegesError) throw collegesError;
 
-    let eventsQuery = `
-      SELECT
-        e.id,
-        e.title,
-        e.description,
-        e.date,
-        e.time,
-        e.venue,
-        e.banner,
-        c.name AS college_name
-      FROM events e
-      JOIN clubs cl ON e.club_id = cl.id
-      JOIN colleges c ON cl.college_id = c.id
-      WHERE e.date >= CURRENT_DATE`;
-
+    // Build events query
+    let eventsQuery = supabase
+      .from('events')
+      .select('id, title, description, date, location:venue, banner, club_id, clubs(name, college_id), colleges(name)')
+      .gte('date', new Date().toISOString().split('T')[0]);
 
     if (filter === 'this-week') {
-      eventsQuery += ` AND e.date <= CURRENT_DATE + INTERVAL '7 days'`;
+      const today = new Date();
+      const weekEnd = new Date();
+      weekEnd.setDate(today.getDate() + 7);
+      eventsQuery = eventsQuery.gte('date', today.toISOString().split('T')[0]).lte('date', weekEnd.toISOString().split('T')[0]);
     }
 
-    // Add search condition if search term exists
     if (searchTerm) {
-      eventsQuery += ` AND (
-        LOWER(e.title) LIKE LOWER($1) OR
-        LOWER(c.name) LIKE LOWER($1)
-      )`;
+      eventsQuery = eventsQuery.ilike('title', `%${searchTerm}%`);
     }
 
-    eventsQuery += ` ORDER BY e.date ASC, e.time ASC`;
+    eventsQuery = eventsQuery.order('date', { ascending: true });
 
-    // Execute events query
-    const eventsResult = await db.query(
-      eventsQuery,
-      searchTerm ? [`%${searchTerm}%`] : []
-    );
+    const { data: eventsData, error: eventsError } = await eventsQuery;
+    if (eventsError) throw eventsError;
 
     // Format dates and times
-    const events = eventsResult.rows.map(event => ({
+    const events = (eventsData || []).map(event => ({
       ...event,
       formattedDate: formatDate(event.date),
-      formattedTime: formatTime(event.time)
+      formattedTime: event.time ? formatTime(event.time) : '',
     }));
 
     res.render('index', {
-      colleges: collegesResult.rows,
+      colleges: colleges || [],
       events: events,
       searchTerm: searchTerm,
       filter: filter,
@@ -1905,8 +1893,8 @@ app.post('/college/:id/edit', isSuperAdmin, collegeLogoUploader.single('logo'), 
         // Handle admin updates
         if (admin_email) {
             const existingAdmin = await client.query(
-                'SELECT * FROM users WHERE college_id = $1 AND role = $2',
-                [collegeId, 'college_admin']
+                'SELECT * FROM users WHERE college_id = $1 AND role = 'college_admin'',
+                [collegeId]
             );
 
             if (existingAdmin.rows[0]) {
